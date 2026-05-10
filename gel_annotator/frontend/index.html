@@ -6,19 +6,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
-<link rel="stylesheet" href="/style.css?v=20260510-rowlabel" />
+<link rel="stylesheet" href="/style.css?v=20260510-toolbar-logo" />
 </head>
 <body>
 
 <header>
-  <!-- Title block: app brand + small Info / Help pills directly below.
-       Stays as a single column on the left of the toolbar so the
-       remaining toolbar space is reserved for tools / actions. -->
+  <!-- Title block: logo + (brand text stacked above Info/Help pills).
+       Logo on the left of the brand text gives the toolbar a clear
+       visual anchor; the rest of the toolbar continues horizontally
+       to the right. -->
   <div class="title-block">
-    <h1>Slots Gel Annotator</h1>
-    <div class="title-pills">
-      <button id="info-btn" class="hdr-pill" title="About, version, references, methods">ⓘ Info</button>
-      <button id="help-btn" class="hdr-pill" title="Start the guided tour (F1)">? Help</button>
+    <img class="title-logo" src="/favicon.png" alt="" />
+    <div class="title-text">
+      <h1>Slots Gel Annotator</h1>
+      <div class="title-pills">
+        <button id="info-btn" class="hdr-pill" title="About, version, references, methods">ⓘ Info</button>
+        <button id="help-btn" class="hdr-pill" title="Start the guided tour (F1)">? Help</button>
+      </div>
     </div>
   </div>
   <label class="file-label" data-tour="open" title="Open a gel image (PNG, JPEG, TIFF, or .raw16). 16-bit raws unlock LUT + saturation editing.">
@@ -39,8 +43,13 @@
   <input type="number" id="top-thickness" class="top-input" min="0.5" max="20" step="0.5" disabled title="Line thickness of selected line" placeholder="━" />
   <input type="color" id="top-color" class="top-color" disabled title="Color of selected element" value="#000000" />
   <span class="spacer"></span>
-  <button id="undo-btn" disabled title="Undo last action (Ctrl+Z)">Undo (Ctrl+Z)</button>
-  <button id="redo-btn" disabled title="Redo (Ctrl+Y or Ctrl+Shift+Z)">Redo (Ctrl+Y)</button>
+  <!-- Undo / Redo stacked vertically as compact pills. The Ctrl+Z /
+       Ctrl+Y shortcuts are the canonical way to invoke them; the
+       buttons are just for discoverability. -->
+  <div class="undo-redo-stack">
+    <button id="undo-btn" class="ur-btn" disabled title="Undo last action (Ctrl+Z)">↶ Undo</button>
+    <button id="redo-btn" class="ur-btn" disabled title="Redo (Ctrl+Y or Ctrl+Shift+Z)">↷ Redo</button>
+  </div>
   <button id="save-btn" data-tour="save" disabled title="Save the project as JSON (image embedded)">Save</button>
   <label class="file-label" id="load-btn-wrap" title="Load a previously saved project">
     Load
@@ -323,6 +332,6 @@
      div that we paint with spotlight strips + a card on each step. -->
 <div id="tour-overlay" class="hidden" aria-hidden="true"></div>
 
-<script src="/app.js?v=20260510-rowlabel"></script>
+<script src="/app.js?v=20260510-toolbar-logo"></script>
 </body>
 </html>

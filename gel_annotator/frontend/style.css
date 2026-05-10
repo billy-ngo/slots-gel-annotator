@@ -31,14 +31,28 @@ header {
 header > * { align-self: center; }
 header h1 { font-size: 13px; margin: 0; font-weight: 600; letter-spacing: 0.3px; line-height: 1.1; flex-shrink: 0; }
 
-/* Title block: brand text + Info / Help pills stacked below it.
- * The block is one flex item (column-direction) so the rest of the
- * toolbar continues horizontally to its right. flex-shrink: 0 so the
- * block keeps its natural width even on very narrow viewports. */
+/* Title block: logo on the left, brand text + Info/Help pills stacked
+ * to its right. Whole block is one flex item (row-direction at the
+ * outer level, column-direction inside .title-text) so the rest of
+ * the toolbar continues horizontally. flex-shrink: 0 so the block
+ * keeps its natural width even on narrow viewports. */
 header .title-block {
-  display: flex; flex-direction: column; gap: 3px;
+  display: flex; flex-direction: row; align-items: center; gap: 8px;
   margin-right: 8px; flex-shrink: 0;
-  align-self: stretch; justify-content: center;
+  align-self: stretch;
+}
+header .title-logo {
+  width: 32px; height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+  /* Subtle drop-shadow so a transparent-background icon still stands
+   * out against the dark toolbar. */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+  user-select: none;
+}
+header .title-text {
+  display: flex; flex-direction: column; gap: 3px;
+  justify-content: center; align-self: stretch;
 }
 header .title-pills { display: flex; gap: 4px; }
 header .hdr-pill {
@@ -56,6 +70,35 @@ header .hdr-pill {
   margin: 0;
 }
 header .hdr-pill:hover { background: #4a4a52; border-color: #777; color: #fff; }
+
+/* Stacked Undo / Redo: two compact buttons in a vertical column where
+ * a single full-width button used to live. Saves toolbar real estate
+ * since the keyboard shortcut (Ctrl+Z / Ctrl+Y) is the canonical
+ * invocation path; the buttons are just for discoverability. */
+header .undo-redo-stack {
+  display: flex; flex-direction: column; gap: 2px;
+  flex-shrink: 0;
+  align-self: center;
+}
+header .ur-btn {
+  /* Match the dimensions of .hdr-pill so the visual rhythm of the
+   * left and right ends of the toolbar is consistent. */
+  background: #3a3a42;
+  border: 1px solid #555;
+  color: #eee;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  margin: 0;
+  min-width: 60px;
+  text-align: left;
+}
+header .ur-btn:hover:not(:disabled) { background: #4a4a52; border-color: #777; }
+header .ur-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 header .spacer { flex: 1; }
 header .file-label {
   display: inline-flex; align-items: center; gap: 5px;

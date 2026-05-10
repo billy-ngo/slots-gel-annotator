@@ -483,6 +483,86 @@ def _has_terminal() -> bool:
         return False
 
 
+# ── Port probing ─────────────────────────────────────────────────────
+def _find_free_port(host: str, start_port: int, max_tries: int = 20) -> tuple[int, bool]:
+    """Probe consecutive ports starting at ``start_port`` and return the
+    first one that's actually bindable. Used by the launcher to fall
+    forward when the requested port is already in use — by another Slots
+    instance whose lock file went stale (very common after a hard crash
+    or kill -9), by some unrelated dev server, by a Windows TIME_WAIT
+    socket from a previous Slots that exited recently, etc.
+
+    Returns ``(port, fallback_used)`` where ``fallback_used`` is True
+    when the returned port differs from ``start_port`` so the caller
+    can log it loudly.
+
+    Raises ``RuntimeError`` when no port in ``[start_port,
+    start_port + max_tries - 1]`` will bind — the caller should
+    propagate a friendly error mentioning the range.
+
+    Note on race conditions: between this probe and the actual
+    ``uvicorn.run`` bind, another process could grab the port. We close
+    the socket immediately after the probe (rather than holding it)
+    because uvicorn doesn't accept a pre-bound fd reliably across
+    platforms. The caller wraps ``uvicorn.run`` in one retry to handle
+    this rare race.
+    """
+    import socket
+    for offset in range(max_tries):
+        port = start_port + offset
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            # No SO_REUSEADDR — we WANT to fail if anyone is on this
+            # port, including a TIME_WAIT socket on Windows (matches
+            # what uvicorn will do moments later).
+            s.bind((host, port))
+            return port, (port != start_port)
+        except OSError:
+            continue
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+    raise RuntimeError(
+        f"All ports in {start_port}-{start_port + max_tries - 1} are in use. "
+        f"Free a port or pass --port <N> to pick a specific one."
+    )
+
+
+def _run_uvicorn_with_port_retry(app, host: str, port: int, max_extra_tries: int = 5) -> int:
+    """Run ``uvicorn.run`` with a small retry loop in case a TOCTOU race
+    means the port we just probed got grabbed before uvicorn could bind.
+    Falls forward through consecutive ports up to ``max_extra_tries``
+    times. Returns the port that actually bound, raises RuntimeError if
+    everything fails.
+
+    Re-emits the fallback log line on each shift so the user is always
+    looking at the right URL — but in practice the probe in
+    ``_find_free_port`` already made this near-impossible to trigger.
+    """
+    import uvicorn
+    last_exc: Exception | None = None
+    for offset in range(max_extra_tries + 1):
+        try_port = port + offset
+        if offset > 0:
+            print(f"  Race condition on port {try_port - 1}, trying {try_port}...")
+        try:
+            uvicorn.run(app, host=host, port=try_port, log_level="warning")
+            return try_port
+        except OSError as e:
+            # Windows: WinError 10048; Linux/Mac: errno 98 (EADDRINUSE).
+            msg = str(e).lower()
+            if "10048" in msg or "address already in use" in msg or "eaddrinuse" in msg:
+                last_exc = e
+                continue
+            raise
+    raise RuntimeError(
+        f"Could not bind any port from {port} to {port + max_extra_tries}. "
+        f"Last error: {last_exc}"
+    )
+
+
 # ── Entry point ──────────────────────────────────────────────────────
 def main() -> int:
     """Parse arguments, launch the server, and open the browser.
@@ -566,8 +646,25 @@ def main() -> int:
             return 1
         os.environ["SLOTS_AUTOLOAD"] = str(filepath)
 
+    # Probe for an actually-bindable port. If the requested port is
+    # taken (stale lock from a hard-killed Slots, an unrelated dev
+    # server, a Windows TIME_WAIT socket, etc.), fall forward to the
+    # next available one rather than crashing with "address already in
+    # use". The single-instance check above already handled the case
+    # where another LIVE Slots is on the requested port.
+    try:
+        actual_port, fell_back = _find_free_port(args.host, args.port)
+    except RuntimeError as e:
+        print(f"\n  Error: {e}\n", file=sys.stderr)
+        return 1
+
     h_display = "localhost" if args.host in ("0.0.0.0",) else args.host
-    url = f"http://{h_display}:{args.port}"
+    url = f"http://{h_display}:{actual_port}"
+    if fell_back:
+        print(
+            f"\n  Note: port {args.port} was in use. "
+            f"Using port {actual_port} instead."
+        )
     print(f"\n  Starting {_APP_NAME} at {url}\n")
 
     if not args.no_browser:
@@ -583,10 +680,9 @@ def main() -> int:
     # Late import — uvicorn pulls in ssl + asyncio which are slow on
     # cold start. Doing this AFTER the early-exit paths (--version,
     # --update, --install, single-instance) keeps those paths snappy.
-    import uvicorn
     from gel_annotator.server.main import app
 
-    _write_lock(args.host, args.port)
+    _write_lock(args.host, actual_port)
     atexit.register(_remove_lock)
 
     # Background update notification for headless launches (where the
@@ -595,7 +691,7 @@ def main() -> int:
     if not args.no_update and not has_terminal:
         threading.Thread(target=_bg_update_notify, daemon=True).start()
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    _run_uvicorn_with_port_retry(app, args.host, actual_port)
     return 0
 
 
