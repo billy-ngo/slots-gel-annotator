@@ -1,0 +1,110 @@
+# Publishes the package to PyPI and creates a GitHub Release whenever
+# a tag matching `v*` is pushed (e.g. `v1.0.0`, `v1.0.1`). Also runnable
+# manually from the GitHub Actions UI via "Run workflow" so a release
+# can be re-triggered without having to bump and re-tag.
+#
+# How it works:
+#   1. Check out the repo (full history so the changelog parser sees
+#      every release section).
+#   2. Build sdist + wheel via `python -m build`.
+#   3. Sanity-check that the package's `__version__` matches the tag.
+#      Mismatches abort the workflow — better than publishing a v1.0.1
+#      tag that actually contains 1.0.0 code.
+#   4. Pull the matching release section out of CHANGELOG.md to use as
+#      the GitHub Release body.
+#   5. Push to PyPI via OIDC trusted publishing (no API token needed).
+#   6. Create the GitHub Release with the changelog text + the build
+#      artifacts attached.
+#
+# Setup prerequisites (one-time):
+#   * On PyPI, configure a trusted publisher for the project pointing
+#     at this repo + this workflow file. See
+#     https://docs.pypi.org/trusted-publishers/ for the steps.
+#   * Optionally create a GitHub Environment named `pypi` (matches
+#     `environment:` below) and require manual approval for releases
+#     so a stray tag push can't auto-publish.
+
+name: Publish to PyPI and create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # Required for OIDC trusted publishing to PyPI.
+      id-token: write
+      # Required so the release-creation step can write to the Releases page.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch full history so the changelog-extraction step can read
+          # every prior release section if it ever needs to.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install --upgrade build setuptools wheel
+
+      - name: Build package
+        run: python -m build
+
+      - name: Verify built version matches the tag
+        run: |
+          # Install the freshly-built wheel into the runner's Python
+          # so we can read its actual `__version__` and compare it
+          # against the tag that triggered this run.
+          pip install dist/*.whl --quiet
+          PKG_VERSION=$(python -c "from gel_annotator import __version__; print(__version__)")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "Package version: $PKG_VERSION"
+          echo "Tag version:     $TAG_VERSION"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          # Pull the section between the matching `## [X.Y.Z]` header
+          # and the next `## ` header. If no matching section is found,
+          # fall through to a generic link to the full changelog.
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES=$(awk -v ver="$VERSION" '
+            BEGIN { in_section = 0 }
+            /^## \[/ {
+              if (in_section) exit
+              if (index($0, "[" ver "]")) in_section = 1
+              else next
+            }
+            in_section { print }
+          ' CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md) for full release notes."
+          fi
+          # Multi-line outputs need a heredoc-style sentinel.
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$NOTES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.notes }}
+          files: dist/*
+          draft: false
+          prerelease: false

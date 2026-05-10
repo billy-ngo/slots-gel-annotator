@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Slots Gel Annotator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" type="image/x-icon" href="/favicon.ico" />
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+<link rel="stylesheet" href="/style.css?v=20260510-info3" />
+</head>
+<body>
+
+<header>
+  <!-- Title block: app brand + small Info / Help pills directly below.
+       Stays as a single column on the left of the toolbar so the
+       remaining toolbar space is reserved for tools / actions. -->
+  <div class="title-block">
+    <h1>Slots Gel Annotator</h1>
+    <div class="title-pills">
+      <button id="info-btn" class="hdr-pill" title="About, version, references, methods">ⓘ Info</button>
+      <button id="help-btn" class="hdr-pill" title="Start the guided tour (F1)">? Help</button>
+    </div>
+  </div>
+  <label class="file-label" data-tour="open" title="Open a gel image (PNG, JPEG, TIFF, or .raw16). 16-bit raws unlock LUT + saturation editing.">
+    Open
+    <input type="file" id="file-input" accept="image/png,image/jpeg,image/jpg,image/bmp,image/tiff,.tif,.tiff,.raw16,.raw" />
+  </label>
+  <button id="draw-region-btn" data-tour="draw-region" disabled title="Click and drag on the gel to draw the analysis region (shortcut: D)">Draw Region (D)</button>
+  <button id="add-text-btn" data-tour="add-text" disabled title="Click on the gel to place a text label (shortcut: T)">+Text (T)</button>
+  <button id="add-line-btn" data-tour="add-line" disabled title="Drag on the gel to draw a line (shortcut: L)">+Line (L)</button>
+  <button id="rotate-btn" data-tour="rotate" disabled title="Rotate the image or the selected element (shortcut: R)">Rotate (R)</button>
+  <button id="invert-btn" disabled title="Invert the displayed colors (shortcut: I)">Invert (I)</button>
+  <button id="saturation-btn" data-tour="saturation" disabled title="Highlight saturated (clipped) pixels (shortcut: S)">Saturation (S)</button>
+  <button id="crop-btn" disabled title="Toggle: clip the displayed image to the analysis region (shortcut: C)">Crop to Region (C)</button>
+  <button id="hide-ladders-btn" data-tour="hide-ladders" disabled title="Collapse the analysis region to exclude flank ladder lanes (shortcut: H)">Hide Ladders (H)</button>
+  <button id="lut-btn" data-tour="lut" disabled title="Look-up table — adjust how raw pixel values map to display brightness">LUT (L)</button>
+  <button id="options-btn" disabled title="Display defaults (shortcut: O)">Options (O)</button>
+  <input type="number" id="top-font-size" class="top-input" min="6" max="120" step="1" disabled title="Font size of selected text/label" placeholder="Aa" />
+  <input type="number" id="top-thickness" class="top-input" min="0.5" max="20" step="0.5" disabled title="Line thickness of selected line" placeholder="━" />
+  <input type="color" id="top-color" class="top-color" disabled title="Color of selected element" value="#000000" />
+  <span class="spacer"></span>
+  <button id="undo-btn" disabled title="Undo last action (Ctrl+Z)">Undo (Ctrl+Z)</button>
+  <button id="redo-btn" disabled title="Redo (Ctrl+Y or Ctrl+Shift+Z)">Redo (Ctrl+Y)</button>
+  <button id="save-btn" data-tour="save" disabled title="Save the project as JSON (image embedded)">Save</button>
+  <label class="file-label" id="load-btn-wrap" title="Load a previously saved project">
+    Load
+    <input type="file" id="load-input" accept="application/json,.json" />
+  </label>
+  <button id="export-png-btn" data-tour="export" disabled title="Export as PNG">Export PNG</button>
+  <button id="export-svg-btn" class="primary" disabled title="Export as SVG">Export SVG</button>
+</header>
+
+<main>
+  <div id="canvas-wrap" data-tour="canvas">
+    <div class="empty-state" id="empty-state">
+      <div class="big">Open a gel image to begin</div>
+      <div class="small">PNG, JPEG, or TIFF (8 / 16-bit)</div>
+    </div>
+    <!-- The single rendering surface. Every annotation is a real SVG element.
+         Export = serialize THIS node (SVG) or rasterize it via canvas (PNG). -->
+    <svg id="gel-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+
+  <div id="splitter"></div>
+
+  <aside id="sidebar" data-tour="sidebar">
+
+    <div class="row">
+      <div>
+        <label>Gel type</label>
+        <select id="gel-type">
+          <option value="dna">DNA</option>
+          <option value="rna">RNA</option>
+          <option value="protein">Protein</option>
+        </select>
+      </div>
+      <div class="lane-control">
+        <label>Lanes</label>
+        <div class="lane-stepper">
+          <button class="button lane-step" id="lane-minus" disabled title="Decrease lane count">−</button>
+          <input type="number" id="lane-count" min="1" max="64" step="1" value="10" disabled />
+          <button class="button lane-step" id="lane-plus" disabled title="Increase lane count">+</button>
+        </div>
+      </div>
+    </div>
+
+    <table id="metadata-table" data-tour="metadata">
+      <thead>
+        <tr>
+          <th style="width:36px">Lane</th>
+          <th class="ladder-col" style="width:48px">Ladder</th>
+          <th class="col-add-header" id="col-add-btn" title="Add a metadata column. Cells in the column become bracket labels above the gel — consecutive lanes with the same value auto-merge into one bracket.">+</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="hint">
+      <b>Lane count.</b> Sets how many lanes the table tracks; they auto-distribute evenly across the region's width.<br>
+      <b>Cells.</b> Click a cell and type. Tab / Enter commits and moves to the next. Click a lane number on the left to select it; Shift-click to multi-select; editing any cell with multiple lanes selected fills all of them.<br>
+      <b>Brackets.</b> Each metadata column becomes a bracket row above the gel. Consecutive lanes with the SAME non-empty value merge into one bracket labeled with that value.<br>
+      <b>Ladder.</b> Tick the Ladder cell, then click on the gel at each band's y-position to drop a band; double-click a band size to rename it.
+    </div>
+
+    <div id="band-panel" class="ladder-panel" style="display:none">
+      <h4>Ladder bands <span id="band-panel-lane" class="muted"></span></h4>
+      <div id="band-panel-controls"></div>
+      <div id="band-panel-list"></div>
+      <div class="hint" style="margin-top:6px">
+        Click on the selected ladder lane to drop a band, or use Auto-detect.
+        Click a band label to select it; double-click to rename. Drag a
+        label vertically to move it, or horizontally to shift all labels
+        in the lane together. Marquee (drag on empty space) or Delete
+        removes the selected band(s) and their tick marks.
+      </div>
+    </div>
+
+    <div id="selection-panel" class="ladder-panel" style="display:none">
+      <h4>Selected <span id="selection-kind" class="muted"></span></h4>
+      <div class="row" style="gap:6px">
+        <div style="flex:1">
+          <label>Font size</label>
+          <input type="number" id="sel-font-size" min="6" max="120" step="1" value="18" />
+        </div>
+        <div style="flex:1">
+          <label>Color</label>
+          <input type="color" id="sel-color" value="#000000" />
+        </div>
+      </div>
+      <div class="row" style="gap:6px;margin-top:6px" id="sel-line-row" hidden>
+        <div style="flex:1">
+          <label>Thickness</label>
+          <input type="number" id="sel-thickness" min="0.5" max="20" step="0.5" value="2" />
+        </div>
+        <div style="flex:1;display:flex;align-items:flex-end;gap:6px">
+          <label style="margin:0"><input type="checkbox" id="sel-arrowhead" /> Arrowhead</label>
+        </div>
+      </div>
+      <div class="row" style="margin-top:6px;gap:6px">
+        <button class="button" id="sel-reset" title="Clear any drag offset / size override on this label">Reset position</button>
+        <button class="button" id="sel-delete" style="border-color:#c00;color:#c00">Delete</button>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        Drag the selected element on the gel to move it. Settings here override the defaults for this element only.
+      </div>
+    </div>
+
+  </aside>
+</main>
+
+<div class="status" id="status">Ready. Open a gel image (or drop one anywhere) to begin.</div>
+
+<div id="lut-menu" class="popover" role="menu">
+  <div class="lut-readout">
+    <span id="lut-readout-min">0</span>
+    <span id="lut-readout-gamma">γ: 1.00</span>
+    <span id="lut-readout-max">255</span>
+  </div>
+  <!-- The interactive LUT graph: a histogram of the image intensity is
+       drawn in the background; the LUT curve is overlaid; three handles
+       let the user drag the black point (left), gamma midpoint (center),
+       and white point (right) directly. -->
+  <svg id="lut-graph" width="320" height="180" viewBox="0 0 320 180"></svg>
+  <div class="lut-row"><label>Min</label><input type="number" id="lut-min" step="any" /></div>
+  <div class="lut-row"><label>Max</label><input type="number" id="lut-max" step="any" /></div>
+  <div class="lut-row"><label>Gamma</label><input type="number" id="lut-gamma" step="0.05" min="0.1" max="5" value="1" /></div>
+  <div class="lut-controls">
+    <button class="button" id="lut-reset">Reset</button>
+  </div>
+</div>
+
+<div id="rotate-menu" class="popover" role="menu">
+  <div class="rotate-target-row">
+    <span id="rotate-target-label">Rotating: image</span>
+  </div>
+  <div class="rotate-quick-row">
+    <button id="rotate-q-ccw90" class="button" title="Rotate 90° counter-clockwise">↺ 90°</button>
+    <button id="rotate-q-180"  class="button" title="Rotate 180°">↻ 180°</button>
+    <button id="rotate-q-cw90" class="button" title="Rotate 90° clockwise">↻ 90°</button>
+  </div>
+  <div class="rotate-fine-row">
+    <input type="range" id="rotate-slider" min="-180" max="180" step="0.5" value="0" />
+    <input type="number" id="rotate-input" min="-180" max="180" step="0.1" value="0" />
+    <span class="rotate-deg">°</span>
+  </div>
+  <div class="rotate-controls">
+    <button class="button" id="rotate-reset" title="Reset to 0°">Reset</button>
+    <button class="button" id="rotate-cancel">Cancel</button>
+    <button class="button primary" id="rotate-apply">Apply</button>
+  </div>
+</div>
+
+<div id="options-menu" class="popover" role="menu">
+  <div class="opt-row">
+    <label for="opt-region-outline">Region outline</label>
+    <input type="checkbox" id="opt-region-outline" checked />
+  </div>
+  <div class="opt-row">
+    <label for="opt-line-style">Bracket line style</label>
+    <select id="opt-line-style">
+      <option value="solid">Solid</option>
+      <option value="dashed">Dashed</option>
+    </select>
+  </div>
+  <div class="opt-row">
+    <label for="opt-line-cap">Line cap</label>
+    <select id="opt-line-cap">
+      <option value="butt">Blunt</option>
+      <option value="round">Rounded</option>
+    </select>
+  </div>
+  <div class="opt-row">
+    <label for="opt-tick-height">Tick height</label>
+    <input type="number" id="opt-tick-height" min="2" max="60" step="1" value="10" />
+  </div>
+  <div class="opt-row">
+    <label for="opt-region-border-width">Region border thickness</label>
+    <input type="number" id="opt-region-border-width" min="0.5" max="20" step="0.5" value="2" />
+  </div>
+  <div class="opt-row">
+    <label for="opt-tick-width">Tick thickness</label>
+    <input type="number" id="opt-tick-width" min="0.5" max="20" step="0.5" value="2" />
+  </div>
+</div>
+
+<div id="drop-overlay">Drop image to upload</div>
+
+<!-- ── Info modal ─────────────────────────────────────────────────── -->
+<!-- Shows version, citation, references, methods documentation, and
+     the version history. Click outside the card or press Esc to close.
+     Content is filled by JS so the version string stays in sync with
+     state.appVersion (written by the server template at runtime). -->
+<div id="info-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="info-panel-title">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <img class="modal-logo" src="/favicon.png" alt="" aria-hidden="true" />
+      <div class="modal-title" id="info-panel-title">Slots Gel Annotator</div>
+    </div>
+    <div class="modal-meta">
+      <div><strong>Version:</strong> <span id="info-version">—</span></div>
+      <div><strong>Author:</strong> Billy M Ngo</div>
+      <div><strong>Released:</strong> May 2026</div>
+    </div>
+    <div class="modal-cite">
+      Ngo, B.M. (2026). <em>Slots Gel Annotator</em> [Software].
+      Available at <a href="https://github.com/billy-ngo/slots-gel-annotator" target="_blank" rel="noopener">github.com/billy-ngo/slots-gel-annotator</a>
+    </div>
+
+    <details open>
+      <summary>About</summary>
+      <div class="modal-section">
+        Slots Gel Annotator is a vector-native, browser-based tool for
+        annotating gel-electrophoresis images.
+      </div>
+    </details>
+
+    <details>
+      <summary>References &amp; methods</summary>
+      <div class="modal-section">
+        <div class="modal-subhead">Image processing</div>
+        <div>RGB → grayscale via channel-max (preserves imager-baked red
+          saturation contours from Bio-Rad GelDoc / Azure / GE imagers).</div>
+        <div>Auto-stretched LUT — central 98 % of the histogram
+          (p1 .. p99.5) is mapped to the 0..255 display range.</div>
+        <div>Saturation overlay — pixels at ≥ 99.5 % of the source
+          dynamic range are flagged in red. Threshold is relative to
+          the raw range (not the LUT) so it tracks the imager's intent.</div>
+
+        <div class="modal-subhead">Automatic band detection</div>
+        <div>The <em>Auto-detect bands</em> button collapses the
+          selected ladder lane to a 1-D vertical intensity profile
+          (mean across the lane's width) and finds band centers in
+          three steps:
+          <div class="tl">Identify all strict local maxima along the
+            profile.</div>
+          <div class="tl">Score each maximum by its topographic
+            prominence — the height above the lowest valley reached
+            before encountering a higher peak (or the signal's edge)
+            on either side. Keep only peaks whose prominence is at
+            least 3 % of the profile's dynamic range, which rejects
+            shoulders, gel speckle, and noise floor variation.</div>
+          <div class="tl">Enforce a minimum 5-pixel separation between
+            kept peaks via a greedy pass that prefers the
+            higher-prominence peak whenever two would otherwise sit
+            within the exclusion radius.</div>
+          The implementation is pure-NumPy and runs entirely on the
+          collapsed 1-D profile, so even very tall gels finish in a
+          fraction of a millisecond.</div>
+
+        <div class="modal-subhead">Build &amp; runtime</div>
+        <div>Backend: <a href="https://fastapi.tiangolo.com" target="_blank" rel="noopener">FastAPI</a> + <a href="https://www.uvicorn.org" target="_blank" rel="noopener">uvicorn</a> (Starlette ASGI), <a href="https://numpy.org" target="_blank" rel="noopener">NumPy</a>, <a href="https://pillow.readthedocs.io" target="_blank" rel="noopener">Pillow</a>, <a href="https://github.com/cgohlke/tifffile" target="_blank" rel="noopener">tifffile</a>, <a href="https://scipy.org" target="_blank" rel="noopener">SciPy</a>.</div>
+        <div>Frontend: vanilla JavaScript + SVG (no framework). One
+          single-page HTML file served from <code>gel_annotator/frontend</code>.</div>
+        <div>Branding: favicon &amp; desktop icon generated with
+          <a href="https://favicon.io" target="_blank" rel="noopener">favicon.io</a>.</div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Version history</summary>
+      <div class="modal-section modal-version-history">
+        <div><strong>1.0.0</strong> — May 2026<br>
+          Initial public release as <em>Slots Gel Annotator</em> on PyPI as
+          <code>slotsgeltool</code> with the <code>slots</code> command. Vector-native
+          rendering, multi-format input, auto-stretched LUT, tight
+          saturation overlay, smart bracket rotation, multi-ladder
+          support with hide-ladders, spreadsheet-style metadata table,
+          drag-to-reorder columns, undo / redo, smooth wheel zoom +
+          right-click drag pan, single-instance launcher with auto-
+          update, desktop-shortcut installer for Windows / macOS / Linux,
+          self-contained JSON sessions.</div>
+      </div>
+    </details>
+
+    <div class="modal-foot">
+      <button class="button" onclick="document.getElementById('info-panel').classList.add('hidden')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Guided tour overlay ────────────────────────────────────────── -->
+<!-- Filled imperatively by app.js's tour engine. The overlay is one
+     div that we paint with spotlight strips + a card on each step. -->
+<div id="tour-overlay" class="hidden" aria-hidden="true"></div>
+
+<script src="/app.js?v=20260510-info3"></script>
+</body>
+</html>

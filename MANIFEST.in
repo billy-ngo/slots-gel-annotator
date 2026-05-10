@@ -1,0 +1,16 @@
+include README.md
+include CHANGELOG.md
+include LICENSE
+include MANIFEST.in
+include Install_Windows.bat
+include Install_macOS.command
+
+# Frontend assets — required at runtime by the FastAPI server.
+recursive-include gel_annotator/frontend *.html *.js *.css *.png *.svg *.ico
+
+# Branding assets — optional but useful when present (loaded by
+# gel_annotator.icon and the desktop-shortcut installer).
+recursive-include gel_annotator/assets *.png *.ico *.icns *.svg README.md
+
+# Source-tree extras the developer might want to ship.
+include pyproject.toml

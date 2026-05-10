@@ -1,0 +1,56 @@
+# Byte-compiled Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build artifacts
+build/
+dist/
+*.egg
+*.egg-info/
+.eggs/
+*.whl
+*.tar.gz
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+~$*
+*.tmp
+*.log
+
+# Claude Code workspace (per-machine)
+.claude/
+
+# Bundled raw logo source archive (the extracted assets are tracked
+# under gel_annotator/assets/; the zip is just a redundant source).
+Logos/
+
+# Local test data (user-specific, not for the public repo)
+Test data/
+test_data/
+test_*.png
+test_*.tif
+
+# Compositing scratch files (generated during dev/debug)
+test_composite*.png

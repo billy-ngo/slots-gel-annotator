@@ -1,0 +1,598 @@
+/* Layout + look-and-feel modeled on the original Gel Annotator:
+ *   dark top bar of action buttons, light sidebar with a metadata table,
+ *   draggable splitter, status bar at the bottom. The renderer underneath
+ *   is the new vector-native one — only the chrome matches the original.
+ */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f5f5f5; color: #222;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────── */
+header {
+  background: #2a2a30; color: #fff;
+  padding: 7px 10px;
+  display: flex; align-items: center; gap: 4px;
+  flex: 0 0 42px;
+  white-space: nowrap;
+  flex-wrap: nowrap;            /* never wrap to a second line */
+  overflow-x: auto;             /* scroll horizontally on narrow viewports */
+  overflow-y: hidden;
+}
+/* Vertically center every direct child regardless of element type, so
+ * file-label (which is technically a <label>) lines up with <button>
+ * elements that have different default baselines. Belt-and-suspenders
+ * with the parent's `align-items: center`. */
+header > * { align-self: center; }
+header h1 { font-size: 13px; margin: 0; font-weight: 600; letter-spacing: 0.3px; line-height: 1.1; flex-shrink: 0; }
+
+/* Title block: brand text + Info / Help pills stacked below it.
+ * The block is one flex item (column-direction) so the rest of the
+ * toolbar continues horizontally to its right. flex-shrink: 0 so the
+ * block keeps its natural width even on very narrow viewports. */
+header .title-block {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-right: 8px; flex-shrink: 0;
+  align-self: stretch; justify-content: center;
+}
+header .title-pills { display: flex; gap: 4px; }
+header .hdr-pill {
+  background: transparent;
+  border: 1px solid #555;
+  color: #ccc;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.4;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  /* Override generic `header button` rules. */
+  margin: 0;
+}
+header .hdr-pill:hover { background: #4a4a52; border-color: #777; color: #fff; }
+header .spacer { flex: 1; }
+header .file-label {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px; background: #3d8be0; border-radius: 3px;
+  cursor: pointer; font-size: 12px;
+  border: 1px solid #2c70bf;
+  white-space: nowrap; flex-shrink: 0;
+  /* Override the global `label { text-transform: uppercase }` rule used
+   * on sidebar form labels — toolbar file-labels are buttons, not form
+   * captions, and should keep their literal mixed-case text. */
+  text-transform: none;
+  letter-spacing: 0;
+  /* Match button line-height so the rendered height matches and the
+   * Load button sits at the same y as adjacent <button> elements. */
+  line-height: 1.4;
+  /* Reset the global `label { margin-bottom: 3px }` rule. Without this
+   * the file-label's flex margin-box is 3px taller than a sibling
+   * <button>, and `align-items: center` on the header positions its
+   * visible content 1.5px above the row baseline → the Open / Load
+   * buttons appear shifted up vs. neighboring <button> elements. */
+  margin: 0;
+}
+header .file-label:hover { background: #4f9cf0; }
+header .file-label input { display: none; }
+header button {
+  padding: 4px 9px; border: 1px solid #555; background: #3a3a42;
+  color: #eee; border-radius: 3px; cursor: pointer; font-size: 12px;
+  font-family: inherit;
+  white-space: nowrap; flex-shrink: 0;
+  line-height: 1.4;
+}
+header button:hover:not(:disabled) { background: #4a4a52; border-color: #777; }
+header button:disabled { opacity: 0.4; cursor: not-allowed; }
+header button.primary { background: #3d8be0; border-color: #2c70bf; }
+header button.primary:hover:not(:disabled) { background: #4f9cf0; }
+header button.toggle-on { background: #ffcc66; color: #5a3a00; border-color: #c89400; }
+
+/* Top-bar selection inputs (font-size, thickness, color). Kept
+ * compact so they fit alongside buttons; grayed when no element is
+ * selected. Placeholders ("Aa", "━") encode the input's role so we
+ * don't need separate label elements taking extra width.
+ *
+ * Selectors use `input.top-input` rather than `.top-input` so they out-
+ * specifity the sidebar's `input[type="number"], input[type="text"]
+ * { width: 100% }` rule, which would otherwise stretch these inputs to
+ * fill the entire toolbar.
+ */
+header input.top-input, header input.top-color {
+  padding: 3px 5px; border: 1px solid #555; background: #1f1f25;
+  color: #eee; border-radius: 3px; font-size: 12px;
+  font-family: inherit;
+  flex-shrink: 0;
+  width: 46px;
+  line-height: 1.4;
+}
+header input.top-input::placeholder { color: #888; opacity: 1; }
+header input.top-color { width: 28px; height: 26px; padding: 0; border-width: 1px; cursor: pointer; }
+header input.top-input:disabled, header input.top-color:disabled {
+  opacity: 0.4; cursor: not-allowed;
+  /* Sidebar's `input:disabled` paints disabled fields gray; we want our
+   * dark toolbar inputs to keep the dark look just dimmed. */
+  background: #1f1f25; color: #eee;
+}
+
+/* Popovers (LUT, Options menu) anchored under their buttons. */
+.popover {
+  position: fixed; z-index: 200;
+  background: #fff; color: #222;
+  border: 1px solid #888; border-radius: 6px;
+  padding: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  display: none;
+  min-width: 240px;
+}
+.popover.show { display: block; }
+.lut-row, .opt-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 0; font-size: 13px; gap: 10px;
+}
+.lut-row + .lut-row, .opt-row + .opt-row { border-top: 1px solid #eee; }
+.lut-row label, .opt-row label {
+  margin: 0; text-transform: none; letter-spacing: 0;
+  color: #222; font-size: 13px;
+}
+.lut-row input[type="number"], .opt-row input, .opt-row select {
+  width: 110px; padding: 3px 6px; font-size: 13px;
+  border: 1px solid #ccc; border-radius: 3px;
+}
+#lut-menu .lut-readout {
+  display: flex; justify-content: space-between;
+  font-family: monospace; font-size: 12px; color: #555;
+  padding-bottom: 6px; border-bottom: 1px solid #eee;
+  margin-bottom: 6px;
+}
+#lut-menu .lut-controls { margin-top: 8px; display: flex; justify-content: flex-end; }
+
+/* The interactive LUT graph: histogram bars in the background, LUT curve
+ * on top, three draggable handles. Sized to comfortably fit alongside
+ * the min/max/gamma number inputs in the popover. */
+#lut-graph { display: block; margin: 6px 0 8px; background: #fafafa; border: 1px solid #ccc; border-radius: 3px; }
+#lut-graph .lut-axis { stroke: #aaa; stroke-width: 1; }
+#lut-graph .lut-axis-label { font-size: 10px; fill: #555; }
+#lut-graph .lut-hist { fill: #bbb; }
+#lut-graph .lut-curve { stroke: #3d8be0; stroke-width: 2; fill: none; }
+#lut-graph .lut-handle { stroke: #000; stroke-width: 1.5; cursor: ew-resize; }
+#lut-graph .lut-handle.gamma { cursor: ns-resize; }
+#lut-graph .lut-handle:hover { stroke-width: 2.5; }
+
+#rotate-menu { min-width: 280px; }
+#rotate-menu .rotate-target-row {
+  font-size: 12px; color: #555; padding: 2px 0 6px; border-bottom: 1px solid #eee;
+  margin-bottom: 6px;
+}
+#rotate-menu .rotate-quick-row {
+  display: flex; gap: 5px; margin-bottom: 8px;
+}
+#rotate-menu .rotate-quick-row .button { flex: 1; padding: 5px 4px; font-size: 12px; }
+#rotate-menu .rotate-fine-row {
+  display: flex; gap: 6px; align-items: center; margin-bottom: 8px;
+}
+#rotate-menu .rotate-fine-row input[type=range] { flex: 1; }
+#rotate-menu .rotate-fine-row input[type=number] { width: 65px; padding: 3px 5px; font-size: 12px; }
+#rotate-menu .rotate-deg { color: #666; font-size: 12px; }
+#rotate-menu .rotate-controls {
+  display: flex; gap: 5px; justify-content: flex-end;
+}
+
+/* ── Main split: canvas | splitter | sidebar ──────────────────────── */
+main {
+  display: grid; grid-template-columns: 1fr 6px 380px;
+  flex: 1 1 auto; min-height: 0;
+}
+#splitter { background: #ddd; cursor: col-resize; transition: background 0.15s; }
+#splitter:hover, #splitter.dragging { background: #3d8be0; }
+
+#canvas-wrap {
+  position: relative; overflow: auto; background: #fafafa;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 14px;
+}
+/* The SVG's CSS-rendered width is set imperatively in renderAll()
+ * (baseWidth × _zoomScale). Don't constrain it via max-width here —
+ * the previous `max-width: 100%` clamped JS-set widths back down to
+ * the canvas-wrap's content width, so wheel-zoom appeared to do
+ * nothing. The canvas-wrap's `overflow: auto` produces scrollbars
+ * when the SVG exceeds the container, which is the desired
+ * zoomed-in behavior. flex-shrink: 0 prevents the canvas-wrap's
+ * flex layout from auto-shrinking the SVG to fit when zoomed in
+ * (without it the JS-set width is silently overridden by flex). */
+#gel-svg { display: block; height: auto; background: transparent; flex-shrink: 0; }
+
+.empty-state {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 10px;
+  color: #888; pointer-events: none;
+}
+.empty-state .big { font-size: 18px; color: #555; }
+.empty-state .small { font-size: 13px; }
+
+/* Tool-aware cursor. */
+body.tool-region #gel-svg { cursor: crosshair; }
+body.tool-band   #gel-svg { cursor: row-resize; }
+body.tool-text   #gel-svg { cursor: text; }
+body.tool-line   #gel-svg { cursor: crosshair; }
+body.tool-rotate #gel-svg { cursor: crosshair; }
+
+/* Selected annotation / label highlight. Doesn't show in exports because
+ * the export builder doesn't preserve runtime CSS classes on cloned text;
+ * but the selection class also doesn't exist on data-export-hide nodes
+ * either way. Color is the same accent we use in the splitter. */
+#gel-svg .label, #gel-svg .annotation { cursor: pointer; }
+#gel-svg .label.selected, #gel-svg .annotation.selected {
+  outline: 1.5px dashed #3d8be0;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────── */
+#sidebar {
+  background: #fff; border-left: 1px solid #ddd; padding: 14px;
+  overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+}
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+label {
+  display: block; font-size: 11px; color: #666;
+  margin-bottom: 3px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+input[type=number], select, input[type=text] {
+  width: 100%; padding: 5px 8px; border: 1px solid #ccc;
+  border-radius: 3px; font-size: 13px; background: white;
+  font-family: inherit;
+}
+input:disabled, select:disabled { background: #f5f5f5; color: #888; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+
+.button {
+  padding: 6px 12px; border: 1px solid #ccc; background: white;
+  border-radius: 4px; cursor: pointer; font-size: 13px; text-align: center;
+  font-family: inherit;
+}
+.button:hover:not(:disabled) { background: #f0f0f0; }
+.button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Lane-count stepper. */
+.lane-control { position: relative; }
+.lane-stepper { display: flex; gap: 4px; align-items: stretch; }
+.lane-stepper input { text-align: center; font-weight: 600; font-size: 14px; }
+.lane-step {
+  padding: 4px 0; min-width: 36px; font-size: 18px; font-weight: bold;
+  line-height: 1; cursor: pointer; user-select: none;
+}
+.lane-step:active:not(:disabled) { background: #e0ecff; }
+
+/* ── Metadata table ───────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+thead th {
+  background: #f5f5f5; padding: 5px 6px; border: 1px solid #ddd;
+  text-align: left; position: sticky; top: 0; z-index: 1;
+  font-weight: 600; user-select: none;
+}
+thead th .col-name {
+  outline: none; cursor: text; padding: 0 1px;
+  border-radius: 2px; min-width: 16px; display: inline-block;
+}
+thead th .col-name[contenteditable="true"] {
+  background: #fffbe7; box-shadow: inset 0 0 0 1px #d6b94a;
+}
+thead th .col-name:empty:not([contenteditable="true"])::before {
+  content: "(no title)"; color: #aaa; font-style: italic;
+}
+thead th .col-del {
+  float: right; color: #c00; cursor: pointer; padding: 0 4px;
+  font-weight: bold; opacity: 0.6;
+}
+thead th .col-del:hover { opacity: 1; }
+thead th.col-add-header {
+  width: 24px; text-align: center; cursor: pointer;
+  font-weight: bold; color: #2c70bf; background: #f0f6ff;
+  user-select: none;
+}
+thead th.col-add-header:hover { background: #d6e8ff; }
+thead th.ladder-col { text-align: center; }
+
+tbody td { padding: 4px 6px; border: 1px solid #e5e5e5; }
+tbody td.lane-num {
+  text-align: center; background: #fafafa; cursor: pointer;
+  width: 36px; user-select: none; font-weight: 500;
+}
+tbody td.ladder-cell { text-align: center; }
+tbody td.ladder-cell input[type=checkbox] { vertical-align: middle; }
+
+tbody td.editable { min-width: 70px; cursor: cell; }
+tbody td.editable:focus {
+  outline: 2px solid #3d8be0; outline-offset: -2px; background: #fffbe7;
+}
+tbody td.editable.cell-selected { background: #d9ecff; }
+tbody td.editable.cell-selected:focus { background: #fffbe7; }
+tbody tr.selected td.lane-num { background: #ffe7b8; color: #d76a00; font-weight: 600; }
+tbody tr.selected td { background: #fff8e1; }
+
+/* Ladder bands panel — shown when at least one lane is marked as ladder. */
+.ladder-panel {
+  border: 1px solid #ddd; border-radius: 4px;
+  background: #fafafa; padding: 8px 10px;
+}
+.ladder-panel h4 { margin: 0 0 6px; font-size: 12px; color: #333; font-weight: 600; }
+.ladder-panel .band-row {
+  display: flex; align-items: center; gap: 4px; padding: 2px 0;
+  font-size: 12px;
+}
+.ladder-panel .band-row input { font-size: 12px; padding: 2px 4px; }
+.ladder-panel .band-row .y-coord { font-size: 10px; color: #888; min-width: 36px; }
+.ladder-panel .band-row .x-btn {
+  background: none; border: none; color: #c00; cursor: pointer;
+  font-size: 14px; padding: 0 4px;
+}
+.ladder-panel .band-row .x-btn:hover { color: #800; }
+
+#band-panel-controls .band-controls-row {
+  display: flex; gap: 6px; margin-bottom: 6px; align-items: stretch;
+}
+#band-panel-controls .button { flex: 0 0 auto; padding: 5px 10px; font-size: 12px; }
+#band-panel-controls select { flex: 1; font-size: 12px; padding: 4px 6px; }
+
+/* Hover affordance: ladder band labels are draggable AND clickable. */
+#gel-svg .ladder-band-label { cursor: move; }
+#gel-svg .ladder-band-label:hover { fill: #3d8be0 !important; }
+body.inverted #gel-svg .ladder-band-label:hover { fill: #5cb1ff !important; }
+
+/* ── Column drag-and-drop reordering ─────────────────────────────────
+ * The TH is draggable; .dragging fades it while in flight, and
+ * .drop-before / .drop-after paint a thin blue insertion line on the
+ * left or right edge of the hover target. The lines use box-shadow
+ * (inset) so they don't disturb table layout. */
+#metadata-table th.col-th {
+  cursor: grab;
+  position: relative;
+}
+#metadata-table th.col-th.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+#metadata-table th.col-th.drop-before {
+  box-shadow: inset 3px 0 0 0 #3d8be0;
+}
+#metadata-table th.col-th.drop-after {
+  box-shadow: inset -3px 0 0 0 #3d8be0;
+}
+
+/* "Show" row: per-column visibility checkboxes. Lighter weight than the
+ * heading row above it so the eye treats it as secondary. */
+#metadata-table tr.show-row th {
+  font-weight: normal;
+  font-size: 11px;
+  color: #666;
+  background: #fafafa;
+  text-align: center;
+  padding: 2px 4px;
+}
+#metadata-table tr.show-row th.show-row-label {
+  text-align: right; padding-right: 8px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+  font-size: 10px;
+}
+#metadata-table tr.show-row th.show-cell input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
+}
+
+.hint { color: #888; font-size: 11px; margin-top: 4px; line-height: 1.5; }
+.muted { color: #888; font-size: 11px; }
+
+/* ── Status bar ───────────────────────────────────────────────────── */
+.status {
+  padding: 5px 14px; background: #eee; border-top: 1px solid #ccc;
+  font-size: 12px; color: #333; flex: 0 0 26px; line-height: 16px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.status.error { background: #fde0e0; color: #b00; }
+
+/* ── Drop overlay ─────────────────────────────────────────────────── */
+#drop-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(61, 139, 224, 0.18);
+  border: 6px dashed #3d8be0; box-sizing: border-box;
+  display: none; align-items: center; justify-content: center;
+  font-size: 28px; color: #1f5fb0; font-weight: 700;
+  pointer-events: none; backdrop-filter: blur(2px);
+}
+#drop-overlay.show { display: flex; }
+
+/* ── Inverted theme — flips canvas + sidebar surfaces too. ────────── */
+body.inverted { background: #1a1a1a; color: #eee; }
+body.inverted #canvas-wrap { background: #1a1a1a; }
+body.inverted #sidebar { background: #2a2a30; color: #ddd; border-left-color: #555; }
+body.inverted #sidebar label { color: #aaa; }
+body.inverted #sidebar input, body.inverted #sidebar select {
+  background: #1f1f25; color: #fff; border-color: #555;
+}
+body.inverted .button { background: #2a2a30; color: #eee; border-color: #555; }
+body.inverted thead th { background: #1f1f25; color: #ddd; border-color: #555; }
+body.inverted thead th.col-add-header { background: #2a3a52; color: #6cf; }
+body.inverted tbody td { border-color: #444; color: #ddd; }
+body.inverted tbody td.lane-num { background: #2a2a30; }
+body.inverted tbody td.editable.cell-selected { background: #2a4a72; }
+body.inverted .status { background: #1f1f25; color: #ccc; border-top-color: #555; }
+body.inverted .ladder-panel { background: #2a2a30; border-color: #555; color: #ddd; }
+body.inverted .ladder-panel h4 { color: #ddd; }
+body.inverted .hint { color: #999; }
+body.inverted .empty-state .big { color: #ccc; }
+body.inverted .empty-state .small { color: #888; }
+
+/* ── Modal overlay (Info panel) ──────────────────────────────────── */
+/* Centered card with a dimmed full-screen backdrop. Click outside the
+ * card to close (handler in app.js) — the .modal-card stops propagation
+ * so clicks inside the card don't bubble. */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; box-sizing: border-box;
+}
+.modal-overlay.hidden { display: none; }
+.modal-card {
+  background: #fff; color: #222;
+  border-radius: 10px; padding: 22px 26px;
+  width: 560px; max-width: 100%;
+  max-height: 86vh; overflow-y: auto;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.4);
+  font-size: 13px; line-height: 1.55;
+}
+.modal-head {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+}
+.modal-logo {
+  width: 40px; height: 40px;
+  border-radius: 6px; flex-shrink: 0;
+  /* Soft drop-shadow so a transparent-background logo still pops. */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  background: #fff;
+}
+.modal-title {
+  font-size: 18px; font-weight: 700; letter-spacing: 0.3px;
+}
+.modal-meta {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px;
+  font-size: 12px; color: #444; margin-bottom: 14px;
+}
+.modal-meta strong { color: #222; }
+.modal-cite {
+  background: #f5f7fa; border: 1px solid #d8dee6; border-radius: 6px;
+  padding: 10px 14px; font-size: 12px; line-height: 1.5;
+  margin-bottom: 16px; color: #333;
+}
+.modal-cite a { color: #2a70bf; text-decoration: none; }
+.modal-cite a:hover { text-decoration: underline; }
+.modal-card details {
+  margin-bottom: 8px; border-top: 1px solid #ececec; padding-top: 8px;
+}
+.modal-card details:last-of-type { border-bottom: 1px solid #ececec; padding-bottom: 8px; }
+.modal-card summary {
+  cursor: pointer; font-weight: 600; padding: 4px 0;
+  font-size: 13px; color: #222;
+}
+.modal-card summary:hover { color: #2a70bf; }
+.modal-section {
+  font-size: 12px; line-height: 1.65; color: #555;
+  margin: 6px 0 4px 0;
+}
+.modal-section a { color: #2a70bf; text-decoration: none; }
+.modal-section a:hover { text-decoration: underline; }
+.modal-subhead {
+  font-size: 12px; font-weight: 700; color: #222;
+  margin: 10px 0 4px 0;
+}
+.modal-version-history {
+  max-height: 220px; overflow-y: auto;
+}
+.modal-foot {
+  display: flex; justify-content: flex-end; margin-top: 14px;
+}
+.modal-foot .button {
+  border: 1px solid #ccc; background: #fff; color: #222;
+  padding: 6px 18px; border-radius: 5px; cursor: pointer;
+  font-size: 13px; font-weight: 600; font-family: inherit;
+}
+.modal-foot .button:hover { background: #f0f4fa; border-color: #2a70bf; }
+/* Inverted theme variants. */
+body.inverted .modal-card { background: #1f1f25; color: #eee; }
+body.inverted .modal-meta { color: #bbb; }
+body.inverted .modal-meta strong { color: #fff; }
+body.inverted .modal-cite { background: #2a2a30; border-color: #555; color: #ccc; }
+body.inverted .modal-cite a { color: #5cb1ff; }
+body.inverted .modal-card details { border-top-color: #444; }
+body.inverted .modal-card details:last-of-type { border-bottom-color: #444; }
+body.inverted .modal-card summary { color: #eee; }
+body.inverted .modal-card summary:hover { color: #5cb1ff; }
+body.inverted .modal-section { color: #bbb; }
+body.inverted .modal-section a { color: #5cb1ff; }
+body.inverted .modal-subhead { color: #fff; }
+body.inverted .modal-foot .button { background: #2a2a30; color: #eee; border-color: #555; }
+body.inverted .modal-foot .button:hover { background: #3a3a42; border-color: #5cb1ff; }
+
+/* ── Guided tour ─────────────────────────────────────────────────── */
+/* The overlay is filled imperatively by JS; these rules style the
+ * static pieces (the spotlight ring, the dot row, bullet markers,
+ * and the card body). The 4 dimmed strips that frame the spotlight
+ * are inline-styled by JS so they can update on every step. */
+#tour-overlay { position: fixed; inset: 0; z-index: 5000; }
+#tour-overlay.hidden { display: none; }
+.tour-card {
+  position: fixed; width: 380px;
+  background: #fff; color: #222;
+  border-radius: 10px; padding: 18px 22px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  font-size: 13px; line-height: 1.55;
+  z-index: 5002;
+}
+.tour-step-label {
+  font-size: 10px; font-weight: 600; color: #888;
+  text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 8px;
+}
+.tour-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.tour-desc { font-size: 13px; line-height: 1.55; color: #444; margin-bottom: 16px; }
+.tour-desc .tl { display: flex; gap: 6px; margin-top: 4px; }
+.tour-desc .tl::before { content: "•"; opacity: 0.5; flex-shrink: 0; }
+.tour-desc .td { margin-top: 8px; opacity: 0.7; font-size: 12px; }
+.tour-desc code {
+  background: #eef1f5; padding: 1px 4px; border-radius: 3px;
+  font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.tour-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 12px; }
+.tour-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #d0d0d0; cursor: pointer;
+}
+.tour-dot.active { background: #3d8be0; }
+.tour-foot { display: flex; align-items: center; justify-content: space-between; }
+.tour-skip {
+  background: none; border: none; color: #888; font-size: 11px;
+  cursor: pointer; text-decoration: underline; padding: 0;
+  font-family: inherit;
+}
+.tour-nav { display: flex; gap: 8px; }
+.tour-btn {
+  background: #f5f7fa; border: 1px solid #ccc;
+  border-radius: 5px; color: #222; padding: 6px 14px;
+  cursor: pointer; font-size: 12px; font-weight: 600;
+  font-family: inherit;
+}
+.tour-btn:hover { background: #fff; border-color: #2a70bf; }
+.tour-btn.primary {
+  background: #3d8be0; color: #fff; border-color: #3d8be0;
+  padding: 6px 18px;
+}
+.tour-btn.primary:hover { background: #2a70bf; border-color: #2a70bf; }
+.tour-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tour-arrow {
+  position: absolute;
+  width: 0; height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+}
+.tour-arrow.up   { top: -8px;    border-bottom: 8px solid #fff; }
+.tour-arrow.down { bottom: -8px; border-top: 8px solid #fff; }
+/* Inverted theme variants. */
+body.inverted .tour-card { background: #1f1f25; color: #eee; }
+body.inverted .tour-step-label { color: #999; }
+body.inverted .tour-desc { color: #ccc; }
+body.inverted .tour-desc code { background: #2a2a30; color: #ccc; }
+body.inverted .tour-dot { background: #555; }
+body.inverted .tour-skip { color: #999; }
+body.inverted .tour-btn { background: #2a2a30; border-color: #555; color: #eee; }
+body.inverted .tour-btn:hover { background: #3a3a42; border-color: #5cb1ff; }
+body.inverted .tour-btn.primary { background: #3d8be0; }
+body.inverted .tour-arrow.up { border-bottom-color: #1f1f25; }
+body.inverted .tour-arrow.down { border-top-color: #1f1f25; }
