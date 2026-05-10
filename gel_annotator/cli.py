@@ -19,10 +19,13 @@ spawning a duplicate server. A lock file at ``~/.slots-gel-annotator/
 server.lock`` records the running port + PID; stale locks are detected
 and cleared automatically.
 
-The auto-update check hits PyPI at most once per hour (timestamp tracked
-in ``~/.slots-gel-annotator/.last_update_check``); when an update is
-available the user is prompted and, on accept, ``pip install --upgrade``
-runs in-place. Set ``--no-update`` to bypass the check entirely.
+The auto-update check runs on every launch — same behaviour as the
+sister tool ``proker``. The check uses a 3 s timeout so a slow or
+absent network never holds up startup for long; when an update is
+available the user gets a yes/no prompt (terminal-style if a TTY is
+attached, tkinter dialog otherwise) and, on accept, ``pip install
+--upgrade`` runs in-place. Set ``--no-update`` to bypass the check
+entirely.
 """
 
 import argparse
@@ -38,17 +41,15 @@ from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────
 # Per-user state directory. Holds the single-instance lock, the
-# update-check timestamp, the version marker for first-run welcome,
-# and the optional update log. Created on demand.
+# version marker for first-run welcome, and the optional update log.
+# Created on demand.
 _CONFIG_DIR = Path.home() / ".slots-gel-annotator"
 _LOCK_FILE = _CONFIG_DIR / "server.lock"
 _FIRST_RUN_MARKER = _CONFIG_DIR / ".shortcut_prompted"
-_UPDATE_CHECK_FILE = _CONFIG_DIR / ".last_update_check"
 _VERSION_MARKER = _CONFIG_DIR / ".installed_version"
 
 _PYPI_PACKAGE = "slotsgeltool"
 _DEFAULT_PORT = 8062
-_UPDATE_CHECK_INTERVAL_SEC = 3600  # at most once per hour
 
 # Display name kept in one place so the printed banner, the desktop-
 # shortcut label, and the dialog titles all stay in lock-step.
@@ -149,26 +150,6 @@ def _version_tuple(v: str) -> tuple[int, ...]:
         return (0, 0, 0)
 
 
-def _should_check_update() -> bool:
-    """True if it's been more than ``_UPDATE_CHECK_INTERVAL_SEC`` since last."""
-    try:
-        if _UPDATE_CHECK_FILE.exists():
-            last = float(_UPDATE_CHECK_FILE.read_text().strip())
-            return (time.time() - last) > _UPDATE_CHECK_INTERVAL_SEC
-    except Exception:
-        pass
-    return True
-
-
-def _record_update_check() -> None:
-    """Stamp the update-check timestamp, swallowing IO errors."""
-    try:
-        _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        _UPDATE_CHECK_FILE.write_text(str(time.time()))
-    except Exception:
-        pass
-
-
 def _do_upgrade() -> bool:
     """Run ``pip install --upgrade`` for our package.
 
@@ -212,16 +193,17 @@ def _log(msg: str) -> None:
 def check_and_update(force: bool = False) -> tuple[str, str | None]:
     """Manual update flow used by ``--update``.
 
+    The ``force`` parameter is kept for API compatibility — callers still
+    pass it — but the launcher no longer throttles update checks: every
+    invocation hits PyPI fresh. The 3 s timeout in ``_get_pypi_version``
+    keeps the cost bounded when the network is slow or absent.
+
     Returns a (status, version) tuple where status is one of:
         'updated' — the upgrade ran and succeeded
         'failed'  — pip ran and reported an error
         'current' — already on the latest version
-        'skip'    — couldn't reach PyPI / not yet time to check
+        'skip'    — couldn't reach PyPI
     """
-    if not force and not _should_check_update():
-        return ("skip", None)
-
-    _record_update_check()
     installed = _get_installed_version()
     latest = _get_pypi_version()
 
@@ -238,15 +220,15 @@ def check_and_update(force: bool = False) -> tuple[str, str | None]:
 
 
 def _check_update_with_prompt() -> None:
-    """Background-style update prompt used on every regular launch.
+    """Synchronous update prompt — runs on every regular launch.
 
     Prompts on the terminal if there is one; falls back to a tkinter
     dialog if running headless (e.g. ``pythonw.exe`` from a Windows
     shortcut). Either way the user gets a yes/no choice — we never
-    install behind their back.
+    install behind their back. Bounded by the 3 s PyPI fetch timeout
+    so a slow network never holds up startup for long.
     """
     try:
-        _record_update_check()
         installed = _get_installed_version()
         latest = _get_pypi_version()
         if latest is None or _version_tuple(latest) <= _version_tuple(installed):
@@ -620,8 +602,11 @@ def main() -> int:
 
     _show_welcome_if_new()
 
-    has_terminal = _has_terminal()
-    if not args.no_update and has_terminal:
+    # Update check — runs on every launch, terminal or headless.
+    # _check_update_with_prompt() handles both cases internally:
+    # terminal users get a stdin prompt, headless users get a tkinter
+    # dialog. The 3 s PyPI fetch timeout caps the cost when offline.
+    if not args.no_update:
         _check_update_with_prompt()
 
     # Single-instance — if a server is already running, just open the
@@ -685,37 +670,5 @@ def main() -> int:
     _write_lock(args.host, actual_port)
     atexit.register(_remove_lock)
 
-    # Background update notification for headless launches (where the
-    # interactive prompt above didn't run). Logs to update.log only;
-    # never silently installs.
-    if not args.no_update and not has_terminal:
-        threading.Thread(target=_bg_update_notify, daemon=True).start()
-
     _run_uvicorn_with_port_retry(app, args.host, actual_port)
     return 0
-
-
-def _bg_update_notify() -> None:
-    """Headless update notifier — checks PyPI in the background."""
-    time.sleep(3)  # let the server bind first
-    try:
-        installed = _get_installed_version()
-        latest = _get_pypi_version()
-        if not latest or _version_tuple(latest) <= _version_tuple(installed):
-            return
-        _log(f"  Update available: {installed} -> {latest}. Run 'slots --update'.")
-        if _tk_update_prompt(installed, latest) and _do_upgrade():
-            _log(f"  Updated to {latest}.")
-            try:
-                import tkinter as tk
-                from tkinter import messagebox
-                root = tk.Tk(); root.withdraw()
-                messagebox.showinfo(
-                    _APP_NAME,
-                    f"Updated to v{latest}.\n\nRestart to use the new version.",
-                )
-                root.destroy()
-            except Exception:
-                pass
-    except Exception:
-        pass
