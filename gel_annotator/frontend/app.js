@@ -2444,6 +2444,17 @@ function renderAll() {
       cum += h;
     }
   }
+  // Row label x: just LEFT of the region, not the image. When the
+  // layout is CROPPED these are the same point (the image IS the
+  // region). When NOT cropped, the region is a sub-rect of the
+  // visible image — anchoring the row label to L.marginLeft would
+  // park it at the IMAGE's left edge, which can be hundreds of px
+  // away from the bracket row above the region. The bracket itself
+  // already tracks the region (via imgToSvgX on the lane positions),
+  // so this fix re-aligns the row label with its brackets.
+  const rowLabelXBase = state.region
+    ? (L.cropped ? L.marginLeft : imgToSvgX(L, state.region.x))
+    : L.marginLeft;
   state.columns.forEach((col, ridx) => {
     // Skip the entire column if the user un-checked its "Show" box in
     // the metadata table. computeColumnLayout returned rowHeight=0 for
@@ -2456,7 +2467,7 @@ function renderAll() {
     const rkey = `row-label-${col.id}`;
     if (!isLabelHidden(rkey)) {
       const rt = el("text", {
-        x: L.marginLeft - 10, y: rowY + 5,
+        x: rowLabelXBase - 10, y: rowY + 5,
         "text-anchor": "end",
         "font-family": "Arial, Helvetica, sans-serif",
         "font-size": state.fontPx, "font-weight": 600, fill: ink,
