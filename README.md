@@ -2,10 +2,6 @@
 
 A vector-native, browser-based tool for annotating gel-electrophoresis images and exporting publication-ready figures. Designed for working biologists: drag-and-drop a gel image, draw an analysis region, label your lanes with brackets and ladder bands, and export the result as an SVG (vector — editable in Illustrator, Inkscape, or Figma) or a PNG (raster).
 
-The annotator runs entirely on your machine — no cloud uploads, no accounts. The frontend is a single HTML page served by a local Python web server; everything you do stays local.
-
-The display *is* the export: every annotation lives as a real SVG element. PNG export rasterizes that same SVG; SVG export serializes it. There is no second renderer that could disagree with what you see on screen.
-
 ---
 
 ## Installation
