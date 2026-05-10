@@ -377,7 +377,11 @@ def main() -> int:
     run(["git", "push", args.remote, f"v{new}"])
 
     print()
-    print(f"  ✓ v{new} released. Watch the workflow:")
+    # ASCII-only — Windows cmd.exe defaults to cp1252 and crashes on
+    # ✓ / — / em-dashes / smart quotes / etc. Use plain text
+    # so the script always finishes cleanly regardless of console
+    # encoding.
+    print(f"  v{new} released. Watch the workflow:")
     print(f"    https://github.com/billy-ngo/slots-gel-annotator/actions")
     print()
     return 0
