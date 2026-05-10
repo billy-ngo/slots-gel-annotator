@@ -4,6 +4,10 @@ All notable changes to Slots Gel Annotator are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.2] — 2026-05-10
+
+Toolbar logo + stacked Undo/Redo. Port-fallback in main() now matches proker — falls forward up to 20 ports when the default is taken instead of crashing. /favicon.png serves a real PNG so the in-app logo renders.
+
 ## [1.0.1] — 2026-05-10
 
 Anchor metadata-column row labels (e.g. "Treatment", "Type") to the region's left edge instead of the image's left edge. Previously, when the image was not cropped to region, row labels rendered far from their bracket row above the region; brackets and lines were already region-anchored, so this fix realigns the row labels with the rest of their column.
