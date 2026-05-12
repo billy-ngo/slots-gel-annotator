@@ -136,6 +136,50 @@ header button.primary { background: #3d8be0; border-color: #2c70bf; }
 header button.primary:hover:not(:disabled) { background: #4f9cf0; }
 header button.toggle-on { background: #ffcc66; color: #5a3a00; border-color: #c89400; }
 
+/* ── Dropdown buttons (Project ▾ / Export ▾) ─────────────────────────
+ * Toggle buttons inherit the standard `header button` styling — the
+ * ▾ chevron is part of the text, no pseudo-element gymnastics required.
+ * Menus live OUTSIDE <header> so the header's overflow-y: hidden
+ * doesn't clip them, and they're positioned with `position: fixed` by
+ * JS so they always anchor under their toggle button regardless of
+ * whether the toolbar has been horizontally scrolled. */
+.dropdown-menu {
+  position: fixed;
+  display: none;                       /* JS toggles to block */
+  background: #2a2a30;
+  border: 1px solid #555;
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  min-width: 140px;
+  z-index: 1000;
+}
+.dropdown-menu[hidden] { display: none; }
+.dropdown-menu.open { display: block; }
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #eee;
+  padding: 7px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.dropdown-item:hover:not(:disabled) { background: #4a4a52; }
+.dropdown-item:disabled {
+  color: #777;
+  cursor: not-allowed;
+}
+body.inverted .dropdown-menu { background: #1f1f25; border-color: #555; }
+body.inverted .dropdown-item { color: #ddd; }
+body.inverted .dropdown-item:hover:not(:disabled) { background: #3a3a42; }
+
 /* Top-bar selection inputs (font-size, thickness, color). Kept
  * compact so they fit alongside buttons; grayed when no element is
  * selected. Placeholders ("Aa", "━") encode the input's role so we

@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
-<link rel="stylesheet" href="/style.css?v=20260511-pan-zoom" />
+<link rel="stylesheet" href="/style.css?v=20260511-dropdowns" />
 </head>
 <body>
 
@@ -50,14 +50,48 @@
     <button id="undo-btn" class="ur-btn" disabled title="Undo last action (Ctrl+Z)">↶ Undo</button>
     <button id="redo-btn" class="ur-btn" disabled title="Redo (Ctrl+Y or Ctrl+Shift+Z)">↷ Redo</button>
   </div>
-  <button id="save-btn" data-tour="save" disabled title="Save the project as JSON (image embedded)">Save</button>
-  <label class="file-label" id="load-btn-wrap" title="Load a previously saved project">
+  <!-- Hidden handler targets. The dropdown menu items below forward
+       clicks to these via .click() so all the existing event-listener
+       code (save serialization, load JSON parsing, PNG rasterisation,
+       SVG download) stays untouched. -->
+  <button id="save-btn" hidden disabled aria-hidden="true">Save</button>
+  <label class="file-label" id="load-btn-wrap" hidden aria-hidden="true">
     Load
     <input type="file" id="load-input" accept="application/json,.json" />
   </label>
-  <button id="export-png-btn" data-tour="export" disabled title="Export as PNG">Export PNG</button>
-  <button id="export-svg-btn" class="primary" disabled title="Export as SVG">Export SVG</button>
+  <button id="export-png-btn" hidden disabled aria-hidden="true">Export PNG</button>
+  <button id="export-svg-btn" hidden disabled aria-hidden="true">Export SVG</button>
+
+  <!-- ── Project dropdown (Save + Load) ──────────────────────────────
+       Always enabled because Load is a valid pre-image action. The
+       "Save" menu item inside is disabled until an image is loaded. -->
+  <button id="project-dd-btn" class="dropdown-toggle" data-tour="save"
+          title="Save the current project or load a saved one">Project ▾</button>
+
+  <!-- ── Export dropdown (PNG + SVG) ─────────────────────────────────
+       Disabled until an image is loaded; both inner items also gated
+       on state.imageId so a programmatic .click() pre-image is a no-op. -->
+  <button id="export-dd-btn" class="dropdown-toggle primary" disabled data-tour="export"
+          title="Export the annotated image">Export ▾</button>
 </header>
+
+<!-- ── Dropdown menus ──────────────────────────────────────────────────
+     Siblings of <header> so the header's overflow-y: hidden doesn't
+     clip them when they open. Positioned with `position: fixed` by JS
+     so they always anchor under their toggle button regardless of how
+     the toolbar has been horizontally scrolled. -->
+<div class="dropdown-menu" id="project-dd-menu" role="menu" hidden>
+  <button id="project-save-item" class="dropdown-item" data-action="project-save" disabled
+          title="Save the project as JSON (image embedded)">Save…</button>
+  <button id="project-load-item" class="dropdown-item" data-action="project-load"
+          title="Load a previously saved project">Load…</button>
+</div>
+<div class="dropdown-menu" id="export-dd-menu" role="menu" hidden>
+  <button id="export-png-item" class="dropdown-item" data-action="export-png" disabled
+          title="Export as PNG (raster image)">PNG</button>
+  <button id="export-svg-item" class="dropdown-item" data-action="export-svg" disabled
+          title="Export as SVG (vector, publication-ready)">SVG</button>
+</div>
 
 <main>
   <div id="canvas-wrap" data-tour="canvas">
@@ -332,6 +366,6 @@
      div that we paint with spotlight strips + a card on each step. -->
 <div id="tour-overlay" class="hidden" aria-hidden="true"></div>
 
-<script src="/app.js?v=20260511-pan-zoom"></script>
+<script src="/app.js?v=20260511-dropdowns"></script>
 </body>
 </html>

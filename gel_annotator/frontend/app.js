@@ -373,7 +373,17 @@ const NEEDS_IMAGE = [
   "rotate-btn",
   "invert-btn", "saturation-btn", "crop-btn", "hide-ladders-btn",
   "lut-btn", "options-btn",
+  // The hidden originals stay in the list so all existing toggle code
+  // (which uses these IDs) keeps working — the dropdown items below
+  // mirror their disabled state, and clicking a disabled hidden button
+  // is a no-op, so the .click() forward from a menu item won't fire.
   "save-btn", "export-png-btn", "export-svg-btn",
+  // Visible dropdown UI. project-dd-btn is intentionally NOT here:
+  // Load is a valid pre-image action (the user might want to load a
+  // saved project before they have any image), so the Project dropdown
+  // is always enabled — but its "Save" menu item is gated separately.
+  "export-dd-btn",
+  "project-save-item", "export-png-item", "export-svg-item",
 ];
 
 function setStatus(msg, isError) {
@@ -423,8 +433,29 @@ $("add-line-btn").addEventListener("click", () => {
 // ── Upload ───────────────────────────────────────────────────────────
 $("file-input").addEventListener("change", async (e) => {
   const f = e.target.files && e.target.files[0];
-  if (f) await uploadImage(f);
+  // Reset the input value FIRST so re-uploading the same file later
+  // (after cancellation or after the user picks "no" below) still
+  // fires a fresh change event. Without this, picking the same file
+  // twice in a row would be ignored by the browser.
   e.target.value = "";
+  if (!f) return;
+  // If a gel is already loaded, warn before clobbering it. The
+  // upload path resets state.region, ladder, columns, cells, bands,
+  // selections, and the displayed image — none of which are recoverable
+  // once the new image arrives. Use a native confirm() so we don't
+  // need to spin up a modal for what should be a quick yes/no.
+  if (state.imageId) {
+    const ok = confirm(
+      "An image is already loaded.\n\n" +
+      "Uploading a new image will REPLACE it and discard the current " +
+      "region, ladder, metadata columns, bands, and any unsaved " +
+      "annotations.\n\n" +
+      "Save your project first if you want to come back to it. " +
+      "Continue with the new image?"
+    );
+    if (!ok) return;
+  }
+  await uploadImage(f);
 });
 
 async function uploadImage(file) {
@@ -3826,6 +3857,103 @@ window.addEventListener("blur", () => { if (drag) cancelDrag(); });
   }
 }
 
+// ── Toolbar dropdowns (Project ▾, Export ▾) ─────────────────────────
+//
+// Two compact dropdowns replace the original four flat buttons (Save,
+// Load, Export PNG, Export SVG). The hidden originals — kept in the
+// DOM as targets for the existing event handlers in this file — are
+// triggered via .click() from the menu items, so we don't have to
+// duplicate any of the save / load / export logic here.
+//
+// Menus are siblings of <header> (not children) so the header's
+// overflow-y: hidden doesn't clip them. JS positions each menu via
+// `position: fixed` directly under its toggle button so they always
+// anchor correctly regardless of toolbar horizontal scroll.
+//
+// Outside-click and Escape both close all open dropdowns. Clicking a
+// disabled menu item is a no-op (the underlying handler is gated on
+// state.imageId anyway, and the menu item's `disabled` attr is kept
+// in sync via the NEEDS_IMAGE array).
+{
+  const DROPDOWNS = [
+    { btnId: "project-dd-btn", menuId: "project-dd-menu" },
+    { btnId: "export-dd-btn",  menuId: "export-dd-menu"  },
+  ];
+
+  function closeAllDropdowns() {
+    DROPDOWNS.forEach(({menuId}) => {
+      const m = document.getElementById(menuId);
+      if (m) { m.classList.remove("open"); m.hidden = true; }
+    });
+  }
+
+  function openDropdown(btn, menu) {
+    closeAllDropdowns();
+    // Show first so offsetWidth measures correctly, then position.
+    menu.hidden = false;
+    menu.classList.add("open");
+    const r = btn.getBoundingClientRect();
+    menu.style.top = (r.bottom + 4) + "px";
+    // Right-align the menu to the toggle's right edge — matches the
+    // "drop-down to the left" pattern users expect from buttons near
+    // the right end of a toolbar. Clamp to a 4px viewport margin so a
+    // narrow window can't push the menu off-screen.
+    let left = r.right - menu.offsetWidth;
+    if (left < 4) left = 4;
+    menu.style.left = left + "px";
+  }
+
+  DROPDOWNS.forEach(({btnId, menuId}) => {
+    const btn = document.getElementById(btnId);
+    const menu = document.getElementById(menuId);
+    if (!btn || !menu) return;
+    btn.addEventListener("click", (e) => {
+      if (btn.disabled) return;
+      e.stopPropagation();
+      if (menu.classList.contains("open")) closeAllDropdowns();
+      else openDropdown(btn, menu);
+    });
+  });
+
+  // Menu-item click → forward to the corresponding hidden handler.
+  // For the Load action we click the <input type="file"> directly,
+  // which opens the OS file picker; for everything else we click the
+  // hidden <button> so its existing change/click listener runs.
+  document.querySelectorAll(".dropdown-item").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (item.disabled) return;
+      closeAllDropdowns();
+      const action = item.dataset.action;
+      const targetId =
+        action === "project-save" ? "save-btn" :
+        action === "project-load" ? "load-input" :
+        action === "export-png"   ? "export-png-btn" :
+        action === "export-svg"   ? "export-svg-btn" : null;
+      const target = targetId && document.getElementById(targetId);
+      if (target) target.click();
+    });
+  });
+
+  // Outside-click and Escape both close the menu. We attach to document
+  // (not window) and use the capture phase implicitly — by NOT calling
+  // stopPropagation in the toggle handler above, the document handler
+  // runs AFTER the toggle, so we'd accidentally close what we just
+  // opened. The stopPropagation in the toggle prevents that race.
+  document.addEventListener("click", (e) => {
+    if (e.target.closest(".dropdown-toggle")) return;
+    if (e.target.closest(".dropdown-menu")) return;
+    closeAllDropdowns();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeAllDropdowns();
+  });
+  // Close on window resize / scroll so the floating menu doesn't end
+  // up detached from its toggle button after the layout shifts.
+  window.addEventListener("resize", closeAllDropdowns);
+  window.addEventListener("scroll", closeAllDropdowns, true);
+}
+
 function drawRegionPreview() {
   const prev = svg.querySelector('[data-role="region-preview"]'); if (prev) prev.remove();
   const L = computeLayout();
@@ -4881,16 +5009,16 @@ const TOUR_STEPS = [
   {
     target: "save", title: "8. Save your work", position: "bottom",
     desc:
-      "<b>Save</b> downloads a self-contained JSON file with the image base64-embedded:" +
+      "<b>Project ▾ → Save</b> downloads a self-contained JSON with the image base64-embedded:" +
       '<div class="tl">Reload anywhere, anytime, without needing the original raw image.</div>' +
-      '<div class="tl">Loads via the <b>Load</b> button next door.</div>',
+      '<div class="tl">Reopen via <b>Project ▾ → Load</b>.</div>',
   },
   {
     target: "export", title: "9. Export for publication", position: "bottom",
     desc:
-      "Two export formats:" +
-      '<div class="tl"><b>Export SVG</b> &mdash; vector. Every text element stays as text. Editable in Illustrator / Inkscape / Figma.</div>' +
-      '<div class="tl"><b>Export PNG</b> &mdash; raster, 2× scale. Best for slides &amp; quick previews.</div>' +
+      "<b>Export ▾</b> opens two formats:" +
+      '<div class="tl"><b>SVG</b> &mdash; vector. Every text element stays as text. Editable in Illustrator / Inkscape / Figma.</div>' +
+      '<div class="tl"><b>PNG</b> &mdash; raster, 2× scale. Best for slides &amp; quick previews.</div>' +
       '<div class="td">The display IS the export &mdash; what you see is what gets saved. There is no second renderer to drift from the preview.</div>',
   },
 ];
