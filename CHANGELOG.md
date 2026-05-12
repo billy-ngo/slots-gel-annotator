@@ -4,6 +4,10 @@ All notable changes to Slots Gel Annotator are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.7] — 2026-05-12
+
+Logo now preserves the white that sits behind the trees inside the green emblem. The previous transparent-logo pass uniformly stripped every white pixel; this version uses edge-flood-fill so only background-connected whites become transparent, while interior whites stay opaque.
+
 ## [1.0.6] — 2026-05-11
 
 Toolbar condensed: Save + Load -> Project dropdown; Export PNG + Export SVG -> Export dropdown. Confirm dialog before uploading a new image when one is already loaded so accidental drag-drop or file-pick doesn't wipe annotations.
