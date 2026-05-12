@@ -382,6 +382,108 @@ def _remove_lock() -> None:
         pass
 
 
+# ── Shutdown handlers (terminal close, OS logoff, etc.) ──────────────
+#
+# uvicorn already cleans up on graceful exits — Ctrl-C (SIGINT) and
+# `kill <pid>` (SIGTERM) both run its signal handler, which shuts the
+# server down, releases the listening socket, and lets main() return so
+# atexit fires _remove_lock. Two additional cases need explicit
+# handling so the lock file doesn't leak:
+#
+#   • SIGHUP on POSIX (terminal hangup / closed): uvicorn doesn't
+#     register for SIGHUP, so the default action terminates the
+#     process WITHOUT running atexit.
+#
+#   • CTRL_CLOSE_EVENT on Windows (cmd window X / End Task), plus
+#     CTRL_LOGOFF / CTRL_SHUTDOWN: these are not POSIX signals and do
+#     not reach Python's signal module. Windows force-kills the
+#     process after a ~5 s grace period during which our console
+#     control handler runs.
+#
+# In all abnormal-exit paths the OS automatically closes the listening
+# socket when the process dies — the port IS released immediately.
+# What lingers is the protocol-level TIME_WAIT state (~30-120 s) before
+# the same port can be cleanly re-bound; the launcher's _find_free_port
+# falls forward to the next available port during that window so
+# re-launching slots is never blocked. The handler below only worries
+# about the lock file and (best-effort) the SO_REUSEADDR fast-path.
+_WIN_CTRL_HANDLER_REF = None  # keep WinAPI callback from being GC'd
+
+
+def _install_shutdown_handlers() -> None:
+    """Install OS-level shutdown hooks so the lock file is cleaned up
+    on terminal close / window X / OS logoff — not just on graceful
+    Ctrl-C exit. Idempotent: safe to call once at launch.
+    """
+    import signal as _signal
+
+    def _on_signal(sig, _frame):
+        _remove_lock()
+        # Restore the default handler and re-raise so the process
+        # actually terminates. Without this, returning from a Python
+        # signal handler tells the kernel the signal was "handled" —
+        # the default terminate action is suppressed and the process
+        # keeps running, ignoring the user's request to close.
+        try:
+            _signal.signal(sig, _signal.SIG_DFL)
+            os.kill(os.getpid(), sig)
+        except Exception:
+            # Last-ditch: bypass cleanup and just exit. Better than
+            # leaving the process running after the user asked it to
+            # stop.
+            os._exit(0)
+
+    # SIGHUP doesn't exist on Windows; getattr-None handles that.
+    # SIGTERM / SIGINT are intentionally NOT registered here —
+    # uvicorn already handles them gracefully, and overriding would
+    # bypass uvicorn's clean-server-shutdown path.
+    sig_hup = getattr(_signal, "SIGHUP", None)
+    if sig_hup is not None:
+        try:
+            _signal.signal(sig_hup, _on_signal)
+        except (OSError, ValueError):
+            pass
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            CTRL_CLOSE_EVENT    = 2   # window X button or End Task
+            CTRL_LOGOFF_EVENT   = 5
+            CTRL_SHUTDOWN_EVENT = 6
+
+            HANDLER_FUNC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+
+            def _ctrl_handler(ctrl_type):
+                if ctrl_type in (CTRL_CLOSE_EVENT,
+                                 CTRL_LOGOFF_EVENT,
+                                 CTRL_SHUTDOWN_EVENT):
+                    _remove_lock()
+                    # Return False to let Windows continue with its
+                    # default termination path. Returning True would
+                    # tell Windows the event was handled and keep the
+                    # process running, but we WANT to exit — and
+                    # there's no safe way to gracefully shut uvicorn
+                    # down from this thread (Windows allows only ~5 s
+                    # before force-kill regardless).
+                    return False
+                # CTRL_C_EVENT / CTRL_BREAK_EVENT: let Python's normal
+                # signal infrastructure handle them.
+                return False
+
+            global _WIN_CTRL_HANDLER_REF
+            _WIN_CTRL_HANDLER_REF = HANDLER_FUNC(_ctrl_handler)
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(
+                _WIN_CTRL_HANDLER_REF, True
+            )
+        except Exception:
+            # Best-effort. If we can't install the console handler,
+            # we still have atexit and the PID-liveness recovery on
+            # the next launch — slots stays usable.
+            pass
+
+
 # ── First-run shortcut prompt ────────────────────────────────────────
 def _offer_shortcut_install() -> None:
     """On first launch, prompt to create a desktop shortcut."""
@@ -669,6 +771,11 @@ def main() -> int:
 
     _write_lock(args.host, actual_port)
     atexit.register(_remove_lock)
+    # Install OS shutdown hooks AFTER the lock file exists so they
+    # always find something to clean up. Catches terminal close
+    # (SIGHUP on POSIX) and window-X / logoff / shutdown on Windows
+    # — all paths where atexit would otherwise be skipped.
+    _install_shutdown_handlers()
 
     _run_uvicorn_with_port_retry(app, args.host, actual_port)
     return 0
