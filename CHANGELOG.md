@@ -4,6 +4,10 @@ All notable changes to Slots Gel Annotator are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.4] — 2026-05-11
+
+Toolbar logo no longer has a white square background — all icon assets now have transparent-background variants generated via GIMP-style color-to-alpha unmultiplication, and the /favicon.png server route prefers them.
+
 ## [1.0.3] — 2026-05-10
 
 Auto-update check now runs on every launch, matching proker. Previously, headless launches (e.g. clicking a Windows shortcut) and single-instance 'open existing tab' launches could skip the check entirely. The synchronous prompt now fires every time, terminal or headless.
