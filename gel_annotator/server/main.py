@@ -587,11 +587,21 @@ def favicon_ico() -> Response:
 @app.get("/favicon.png")
 def favicon_png() -> Response:
     """High-res PNG favicon — used by browsers' bookmark UIs and by
-    the in-app toolbar logo `<img src="/favicon.png">`. Returns a real
-    PNG (not the .ico) so the `<img>` tag renders reliably across
-    browsers."""
-    for name in ("icon-192.png", "icon-512.png", "android-chrome-192x192.png",
-                 "favicon-32x32.png", "favicon-16x16.png"):
+    the in-app toolbar logo `<img src="/favicon.png">`. Prefers the
+    transparent-background variants so the toolbar logo sits cleanly
+    on the dark header without a white square around it. Falls back
+    to the opaque versions if the transparent ones aren't present
+    (e.g. during a fresh install before assets are regenerated)."""
+    for name in (
+        "icon-192-transparent.png",
+        "icon-512-transparent.png",
+        "android-chrome-192x192-transparent.png",
+        "icon-192.png",
+        "icon-512.png",
+        "android-chrome-192x192.png",
+        "favicon-32x32.png",
+        "favicon-16x16.png",
+    ):
         candidate = _ASSETS_DIR / name
         if candidate.exists():
             return FileResponse(candidate, media_type="image/png")
