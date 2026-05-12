@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slotsgeltool"
-version = "1.0.4"
+version = "1.0.5"
 description = "Slots Gel Annotator — vector-native gel annotation tool with publication-ready SVG / PNG export."
 readme = "README.md"
 license = "MIT"

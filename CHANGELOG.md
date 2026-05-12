@@ -4,6 +4,10 @@ All notable changes to Slots Gel Annotator are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.5] — 2026-05-11
+
+Pan + zoom: you can now pan to see the whole image when zoomed in. Previously the left half of the zoomed-in SVG was unreachable because flex centering pushed the overflow into negative-scroll territory.
+
 ## [1.0.4] — 2026-05-11
 
 Toolbar logo no longer has a white square background — all icon assets now have transparent-background variants generated via GIMP-style color-to-alpha unmultiplication, and the /favicon.png server route prefers them.
