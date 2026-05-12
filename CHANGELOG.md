@@ -4,6 +4,10 @@ All notable changes to Slots Gel Annotator are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.8] — 2026-05-12
+
+Clean shutdown when the terminal / cmd window is closed. Lock file is now removed even on hard-close paths (window X button on Windows, SIGHUP on POSIX) that previously bypassed atexit. The OS releases the listening port immediately on process death; the port-fallback logic continues to cover the brief TIME_WAIT window when re-launching.
+
 ## [1.0.7] — 2026-05-12
 
 Logo now preserves the white that sits behind the trees inside the green emblem. The previous transparent-logo pass uniformly stripped every white pixel; this version uses edge-flood-fill so only background-connected whites become transparent, while interior whites stay opaque.
