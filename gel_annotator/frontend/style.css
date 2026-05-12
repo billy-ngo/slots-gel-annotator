@@ -236,7 +236,16 @@ main {
 
 #canvas-wrap {
   position: relative; overflow: auto; background: #fafafa;
-  display: flex; align-items: flex-start; justify-content: center;
+  /* `safe center` is the critical bit: when the SVG fits, it centers
+   * normally; when zoom makes it wider than the wrap, alignment falls
+   * back to flex-start so the LEFT half of the overflow is reachable
+   * via scroll. Without `safe`, justify-content: center pushes the
+   * overflow symmetrically past BOTH sides and scrollLeft can only
+   * recover the right side (the left side is in negative-scroll
+   * territory that browsers refuse to expose). The wheel-zoom math
+   * also assumes the SVG starts at scroll origin (0,0), which only
+   * holds under the safe-fallback to flex-start. */
+  display: flex; align-items: safe flex-start; justify-content: safe center;
   padding: 14px;
 }
 /* The SVG's CSS-rendered width is set imperatively in renderAll()
