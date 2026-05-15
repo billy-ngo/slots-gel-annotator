@@ -1987,7 +1987,21 @@ function renderBandLabelEditor(labelSvgX, labelSvgY, anchor, laneIdx, band) {
   //   "start" → label x sits at left edge            → fo.x = labelX
   //   "middle"→ centered                             → fo.x = labelX - W/2
   const fox = anchor === "end" ? labelSvgX - W : anchor === "start" ? labelSvgX : labelSvgX - W / 2;
-  const foy = labelSvgY - H / 2 + state.fontPx / 3;  // center the input on the SVG baseline
+  // Center the input's vertical-middle on labelSvgY (the leader / tick
+  // line). View-mode SVG <text> uses default "alphabetic" baseline:
+  // its y attribute sits at labelSvgY + fontPx/3, but the VISUAL
+  // CENTER of digit-heavy ladder labels lands essentially at
+  // labelSvgY (within ~1 px). The HTML <input> inside the
+  // foreignObject centers its text on the foreignObject's vertical
+  // middle (foy + H/2), so we want foy + H/2 == labelSvgY.
+  //
+  // The previous expression added an extra `+ state.fontPx / 3`
+  // term, which placed the input ~6 px below the SVG text it was
+  // replacing — so clicking a band label to edit it made the label
+  // visually JUMP downward by a third of a font-height, and editing
+  // committed a value that appeared to belong to a different band.
+  // This was the "band annotations appear offset" glitch.
+  const foy = labelSvgY - H / 2;
   const fo = el("foreignObject", {
     x: fox, y: foy, width: W, height: H,
     "data-export-hide": "true",
@@ -4807,20 +4821,46 @@ $("export-svg-btn").addEventListener("click", () => {
 });
 $("export-png-btn").addEventListener("click", async () => {
   if (!state.imageId) return;
-  const SCALE = 2;
   const clone = buildExportableSvg();
   const xml = new XMLSerializer().serializeToString(clone);
   const url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
   try {
     const img = new Image(); img.decoding = "async"; img.src = url;
-    await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("SVG → Image decode failed.")); });
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = () => rej(new Error("SVG → Image decode failed."));
+    });
     const [, , w, h] = clone.getAttribute("viewBox").split(/\s+/).map(Number);
+    // Output-resolution policy:
+    //   • Small gels  → 2× super-sampling for crisp typography.
+    //   • Large gels  → cap at MAX_DIM on the longest dimension so
+    //     the PNG doesn't balloon to tens of megabytes.
+    //
+    // Why 3200 px: that's a clean 600-dpi print at ~5.3 inches wide —
+    // wider than a single-column journal figure, comfortably more
+    // than slide-deck width. Anyone needing larger should use SVG,
+    // which is the proper vector deliverable for publication.
+    //
+    // Previously the export used a fixed 2× scale, so a 4000×3000 px
+    // gel produced an 8000×6000 px PNG (~48 MP, 30-50 MB). Now the
+    // same input produces 3200×2400 px (~7.7 MP, ~5-10 MB) with no
+    // visible quality loss for screen / print at typical figure sizes.
+    const MAX_DIM = 3200;
+    const BASE_SCALE = 2;
+    const scale = Math.min(BASE_SCALE, MAX_DIM / Math.max(w, h));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(w * SCALE); canvas.height = Math.round(h * SCALE);
-    const ctx = canvas.getContext("2d"); ctx.scale(SCALE, SCALE); ctx.drawImage(img, 0, 0, w, h);
+    canvas.width  = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0, w, h);
     const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+    if (!blob) throw new Error("Canvas → PNG encoding returned null.");
     download(blob, (state.filename.replace(/\.[^.]+$/, "") || "gel") + "_annotated.png");
-    setStatus(`Exported PNG (${canvas.width} × ${canvas.height}).`);
+    const mb = (blob.size / (1024 * 1024)).toFixed(2);
+    setStatus(`Exported PNG (${canvas.width} × ${canvas.height}, ${mb} MB).`);
+  } catch (err) {
+    setStatus(`PNG export failed: ${err.message}. Try the SVG export instead.`, true);
   } finally {
     URL.revokeObjectURL(url);
   }
