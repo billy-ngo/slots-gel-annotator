@@ -4,6 +4,10 @@ All notable changes to Slots Gel Annotator are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.9] — 2026-05-14
+
+Fix band-label edit-mode visual jump (label appeared offset by ~6 px the moment you clicked to edit). Cap PNG export at 3200 px on longest dimension — large gels now produce 5-10 MB PNGs instead of 30-50 MB, with no visible quality loss at typical figure sizes. Use SVG export for larger output.
+
 ## [1.0.8] — 2026-05-12
 
 Clean shutdown when the terminal / cmd window is closed. Lock file is now removed even on hard-close paths (window X button on Windows, SIGHUP on POSIX) that previously bypassed atexit. The OS releases the listening port immediately on process death; the port-fallback logic continues to cover the brief TIME_WAIT window when re-launching.
