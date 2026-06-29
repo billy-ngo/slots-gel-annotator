@@ -34,6 +34,12 @@ const state = {
   bitDepth: 16,
   lut: { min: 0, max: 255, gamma: 1.0 }, rawMin: 0, rawMax: 255,
   invertImage: false,
+  // User-chosen paper/background color (hex like "#ffffff"). "" = automatic:
+  // white normally, near-black (#1a1a1a) when the image is inverted. When set,
+  // it overrides both and drives luminance-based ink so default labels stay
+  // readable. Reflected in the live <svg> AND every export (export = serialize
+  // the same SVG, so the one bgFill below covers live view + PNG + SVG).
+  bgColor: "",
 
   // Region (image coords)
   region: null,
@@ -167,7 +173,7 @@ const MAX_HISTORY = 50;
 // constants).
 const UNDOABLE_FIELDS = [
   "imageId", "imgWidth", "imgHeight", "imageDataUrl", "filename",
-  "lut", "rawMin", "rawMax", "invertImage",
+  "lut", "rawMin", "rawMax", "invertImage", "bgColor",
   "region", "regionOutline", "croppedToRegion",
   "bracketLineStyle", "lineCap", "hideLadders",
   "showSaturation", "satOverlayUrl",
@@ -336,6 +342,10 @@ function syncControlsToState() {
   if ($("opt-tick-height")) $("opt-tick-height").value = state.tickHeight;
   if ($("opt-region-border-width")) $("opt-region-border-width").value = state.regionBorderWidth ?? state.strokeWidth;
   if ($("opt-tick-width")) $("opt-tick-width").value = state.tickWidth ?? state.strokeWidth;
+  // Show the explicit choice if set, else the effective auto color so the
+  // swatch previews what's actually painted behind the gel.
+  if ($("opt-bg-color")) $("opt-bg-color").value =
+    state.bgColor || (state.invertImage ? "#1a1a1a" : "#ffffff");
   if ($("invert-btn")) $("invert-btn").classList.toggle("toggle-on", state.invertImage);
   // The dark theme is gated by body.inverted, which the click handler
   // syncs alongside state.invertImage. After an undo/redo, body must
@@ -2074,6 +2084,20 @@ function cancelBandEdit() {
 }
 
 // ── Renderer ─────────────────────────────────────────────────────────
+// True when a color is a dark background (perceived luminance < 0.5) using the
+// Rec. 601 luma weights. Drives the choice of default ink in render() so labels
+// stay readable on any chosen background. Accepts #rgb / #rrggbb.
+function isBgDark(hex) {
+  let s = (hex || "").toString().trim().replace(/^#/, "");
+  if (s.length === 3) s = s.split("").map((c) => c + c).join("");
+  if (s.length !== 6) return false;
+  const r = parseInt(s.slice(0, 2), 16);
+  const g = parseInt(s.slice(2, 4), 16);
+  const b = parseInt(s.slice(4, 6), 16);
+  if ([r, g, b].some(Number.isNaN)) return false;
+  return (0.299 * r + 0.587 * g + 0.114 * b) < 128;
+}
+
 function renderAll() {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   if (!state.imageId) {
@@ -2092,8 +2116,13 @@ function renderAll() {
   const baseWidth = Math.min(L.canvasW, 1200);
   svg.style.width = (baseWidth * (state._zoomScale || 1)) + "px";
 
-  const ink = state.invertImage ? "#ffffff" : "#000000";
-  const bgFill = state.invertImage ? "#1a1a1a" : "#ffffff";
+  // Paper/background color: the user-chosen bgColor, else automatic (white,
+  // or #1a1a1a when inverted). Default ink (structural lines + labels) then
+  // adapts to the background's luminance so it stays readable on whatever
+  // color is chosen — generalising the old invert-keyed swap. In every
+  // pre-existing case (bgColor unset) this is identical to before.
+  const bgFill = state.bgColor || (state.invertImage ? "#1a1a1a" : "#ffffff");
+  const ink = isBgDark(bgFill) ? "#ffffff" : "#000000";
 
   // Background
   svg.appendChild(el("rect", { x: 0, y: 0, width: L.canvasW, height: L.canvasH, fill: bgFill }));
@@ -4557,6 +4586,20 @@ $("opt-tick-width").addEventListener("change", (e) => {
   state.tickWidth = v; renderAll();
   commitHistory(`Set tick thickness to ${v}`);
 });
+// Background color: live local preview while dragging the picker (no history
+// churn), committed once on `change`. "Auto" clears the override back to
+// white / dark-on-invert.
+$("opt-bg-color").addEventListener("input", (e) => { state.bgColor = e.target.value; renderAll(); });
+$("opt-bg-color").addEventListener("change", (e) => {
+  state.bgColor = e.target.value; renderAll();
+  commitHistory(`Set background color to ${e.target.value}`);
+});
+$("opt-bg-reset").addEventListener("click", () => {
+  if (!state.bgColor) return;            // already auto — nothing to commit
+  state.bgColor = ""; renderAll();
+  $("opt-bg-color").value = state.invertImage ? "#1a1a1a" : "#ffffff";
+  commitHistory("Reset background color to auto");
+});
 document.addEventListener("click", (e) => {
   if (!optMenu.contains(e.target) && e.target !== optBtn) optMenu.classList.remove("show");
 });
@@ -4712,7 +4755,7 @@ $("save-btn").addEventListener("click", () => {
     version: 2, image_filename: state.filename, image_data_url: state.imageDataUrl,
     image_width: state.imgWidth, image_height: state.imgHeight,
     lut: state.lut, raw_min: state.rawMin, raw_max: state.rawMax,
-    invert_image: state.invertImage,
+    invert_image: state.invertImage, bg_color: state.bgColor,
     region: state.region, region_outline: state.regionOutline,
     cropped_to_region: state.croppedToRegion,
     bracket_line_style: state.bracketLineStyle, line_cap: state.lineCap,
@@ -4748,6 +4791,7 @@ $("load-input").addEventListener("change", async (e) => {
     state.lut = proj.lut || { min: 0, max: 255, gamma: 1 };
     state.rawMin = proj.raw_min || 0; state.rawMax = proj.raw_max || 255;
     state.invertImage = !!proj.invert_image;
+    state.bgColor = (typeof proj.bg_color === "string") ? proj.bg_color : "";
     state.imageDataUrl = proj.image_data_url || null;
     state.region = proj.region || null;
     state.regionOutline = proj.region_outline !== false;

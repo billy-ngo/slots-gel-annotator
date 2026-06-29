@@ -231,6 +231,13 @@ header input.top-input:disabled, header input.top-color:disabled {
   width: 110px; padding: 3px 6px; font-size: 13px;
   border: 1px solid #ccc; border-radius: 3px;
 }
+/* Background-color row: swatch + "Auto" reset button. */
+.opt-bg { display: inline-flex; align-items: center; gap: 6px; }
+.opt-bg input[type="color"] {
+  width: 34px; height: 26px; padding: 0; border: 1px solid #ccc;
+  border-radius: 3px; background: none; cursor: pointer;
+}
+.opt-bg .button { padding: 3px 8px; font-size: 12px; width: auto; }
 #lut-menu .lut-readout {
   display: flex; justify-content: space-between;
   font-family: monospace; font-size: 12px; color: #555;

@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" type="image/x-icon" href="/favicon.ico" />
 <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
-<link rel="stylesheet" href="/style.css?v=20260512-band-offset" />
+<link rel="stylesheet" href="/style.css?v=20260629-bg-color" />
 </head>
 <body>
 
@@ -264,6 +264,13 @@
     <label for="opt-tick-width">Tick thickness</label>
     <input type="number" id="opt-tick-width" min="0.5" max="20" step="0.5" value="2" />
   </div>
+  <div class="opt-row">
+    <label for="opt-bg-color" title="Paper color behind the gel — used in the live view and in PNG / SVG export">Background color</label>
+    <span class="opt-bg">
+      <input type="color" id="opt-bg-color" value="#ffffff" title="Pick a background color" />
+      <button class="button" id="opt-bg-reset" type="button" title="Reset to automatic (white, or dark when inverted)">Auto</button>
+    </span>
+  </div>
 </div>
 
 <div id="drop-overlay">Drop image to upload</div>
@@ -366,6 +373,6 @@
      div that we paint with spotlight strips + a card on each step. -->
 <div id="tour-overlay" class="hidden" aria-hidden="true"></div>
 
-<script src="/app.js?v=20260512-band-offset"></script>
+<script src="/app.js?v=20260629-bg-color"></script>
 </body>
 </html>
