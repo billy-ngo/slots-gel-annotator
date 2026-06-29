@@ -4,6 +4,10 @@ All notable changes to Slots Gel Annotator are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] — 2026-06-29
+
+Add a Background color option in the Options menu to set the paper color behind the gel. It applies to the live view and to both PNG and SVG export, and the default label ink automatically switches between black and white to stay readable on any background (light or dark). Use Auto to return to the default (white, or dark when the image is inverted). The chosen color is saved in project files.
+
 ## [1.0.9] — 2026-05-14
 
 Fix band-label edit-mode visual jump (label appeared offset by ~6 px the moment you clicked to edit). Cap PNG export at 3200 px on longest dimension — large gels now produce 5-10 MB PNGs instead of 30-50 MB, with no visible quality loss at typical figure sizes. Use SVG export for larger output.

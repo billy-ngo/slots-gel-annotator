@@ -24,5 +24,5 @@ Public API: ``__version__``. Everything else is internal — clients
 should drive the tool through the ``slots`` CLI or the HTTP endpoints.
 """
 
-__version__ = "1.0.9"
+__version__ = "1.1.0"
 __app_name__ = "Slots Gel Annotator"
